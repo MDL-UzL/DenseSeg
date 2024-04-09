@@ -4,17 +4,37 @@ from torch import nn
 import torch
 
 
+def cat_residual_units(n_units: int, in_channels: int, out_channels: int, norm: str, act: str) -> nn.Sequential:
+    layer = []
+    for _ in range(n_units):
+        layer.append(
+            blocks.ResidualUnit(
+                spatial_dims=2,
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=3,
+                norm=(norm, {'affine': True}),
+                act=act,
+                bias=False
+            )
+        )
+    layer = nn.Sequential(*layer)
+    return layer
+
+
 class UVUNet(LoadableModel):
     @store_config_args
     def __init__(self,
                  n_classes: int,
-                 head_latent_space=32,
-                 channels=(32, 64, 128, 256, 512),
-                 strides=(2, 2, 2, 2),
+                 head_latent_space=64,
+                 channels=(64, 128, 256, 512),
+                 strides=(2, 2, 2),
                  num_res_units=2,
                  norm='instance',
-                 act='leakyrelu'):
+                 act='leakyrelu',
+                 uv_channels_per_class=2):
         super(UVUNet, self).__init__()
+        self.uv_channels = uv_channels_per_class
         self.unet = nets.UNet(
             spatial_dims=2,
             in_channels=1,
@@ -28,29 +48,13 @@ class UVUNet(LoadableModel):
         )
 
         self.seg_head = nn.Sequential(
-            blocks.ResidualUnit(
-                spatial_dims=2,
-                in_channels=head_latent_space,
-                out_channels=head_latent_space * 2,
-                kernel_size=3,
-                norm=(norm, {'affine': True}),
-                act=act,
-                bias=False
-            ),
-            nn.Conv2d(head_latent_space * 2, n_classes, kernel_size=1, bias=True)
+            cat_residual_units(num_res_units, channels[0], head_latent_space, norm, act),
+            nn.Conv2d(head_latent_space, n_classes, kernel_size=1, bias=True)
         )
 
         self.uv_head = nn.Sequential(
-            blocks.ResidualUnit(
-                spatial_dims=2,
-                in_channels=head_latent_space,
-                out_channels=head_latent_space * 2,
-                kernel_size=3,
-                norm=(norm, {'affine': True}),
-                act=act,
-                bias=False
-            ),
-            nn.Conv2d(head_latent_space * 2, n_classes * 2, kernel_size=1, bias=True),
+            cat_residual_units(num_res_units, channels[0], head_latent_space, norm, act),
+            nn.Conv2d(head_latent_space, n_classes * self.uv_channels, kernel_size=1, bias=True),
             nn.Tanh()
         )
 
@@ -58,8 +62,8 @@ class UVUNet(LoadableModel):
         features = self.unet(x)
         seg = self.seg_head(features)
         uv = self.uv_head(features)
-        uv = uv.view(uv.shape[0], -1, 2, uv.shape[2], uv.shape[3])  # for each class predict UV (B, C, 2, H, W)
-        return seg, uv # (B, C, H, W), (B, C, 2, H, W)
+        uv = uv.view(uv.shape[0], -1, self.uv_channels, uv.shape[2], uv.shape[3])  # for each class predict UV (B, C, UV, H, W)
+        return seg, uv  # (B, C, H, W), (B, C, UV, H, W)
 
     @torch.no_grad()
     def predict(self, x, mask_uv=True):
@@ -74,7 +78,6 @@ class UVUNet(LoadableModel):
         return seg, uv
 
 
-
 if __name__ == '__main__':
     from torchinfo import summary
     import torch
@@ -82,6 +85,6 @@ if __name__ == '__main__':
     model = UVUNet(n_classes=17)
     print(model)
     summary(model, (1, 1, 256, 256))
-    seg, uv = model(torch.randn(1, 1, 256, 256))
-    print(seg.shape, uv.shape)
-    seg_hat, uv_hat = model.predict(torch.randn(1, 1, 256, 256))
+    # seg, uv = model(torch.randn(1, 1, 256, 256))
+    # print(seg.shape, uv.shape)
+    # seg_hat, uv_hat = model.predict(torch.randn(1, 1, 256, 256))
