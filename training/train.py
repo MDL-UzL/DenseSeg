@@ -1,3 +1,4 @@
+import os
 from tempfile import gettempdir
 
 import torch
@@ -12,6 +13,8 @@ from training.hyper_params import hp_parser
 
 hp = hp_parser.parse_args()
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
 if hp.seg and hp.uv:
     task_name = 'Segmentation and UV Map'
     tags = [hp.uv_loss]
@@ -24,10 +27,15 @@ elif hp.uv:
 else:
     raise ValueError('At least one of seg or uv must be True')
 
-task = Task.init(project_name='DenseSeg', task_name=task_name, auto_connect_frameworks=False, tags=tags)
+task = Task.init(project_name='DenseSeg', task_name=task_name, tags=tags, auto_connect_frameworks=False,
+                 auto_connect_arg_parser={'gpu_id': False}, auto_resource_monitoring=False)
 # init pytorch
 torch.manual_seed(hp.seed)
+if hp.gpu_id is None and torch.cuda.is_available(): # workaround to enable GPU selection during HPO via CUDA_VISIBLE_DEVICES
+    hp.gpu_id = 0
+    Warning('GPU is available but not selected. Defaulting to GPU 0 to enable CUDA_VISIBLE_DEVICES selection.')
 device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu')
+print(f'Using device {device}', 'gou_id:', hp.gpu_id)
 
 # define data loaders
 dl_kwargs = {'num_workers': 4, 'pin_memory': True} if torch.cuda.is_available() else {}
