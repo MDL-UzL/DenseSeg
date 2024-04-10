@@ -9,7 +9,7 @@ hp_parser.add_argument('--uv', action=argparse.BooleanOptionalAction, help='trai
 
 # hyperparameters
 hp_parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
-hp_parser.add_argument('--batch_size', type=int, default=8)
+hp_parser.add_argument('--batch_size', type=int, default=10)
 hp_parser.add_argument('--infer_batch_size', type=int, default=16, help='batch size during validation and testing')
 hp_parser.add_argument('--epochs', type=int, default=100, help='number of epochs for training')
 hp_parser.add_argument('--lr_scheduler', action=argparse.BooleanOptionalAction, help='use learning rate scheduler')

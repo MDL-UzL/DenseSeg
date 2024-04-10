@@ -55,7 +55,7 @@ class UVUNet(LoadableModel):
         self.uv_head = nn.Sequential(
             cat_residual_units(num_res_units, channels[0], head_latent_space, norm, act),
             nn.Conv2d(head_latent_space, n_classes * self.uv_channels, kernel_size=1, bias=True),
-            nn.Tanh()
+            # nn.Tanh()
         )
 
     def forward(self, x):

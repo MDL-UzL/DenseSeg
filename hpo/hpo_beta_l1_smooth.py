@@ -11,7 +11,7 @@ task = Task.init('DenseSeg/HPO', 'Smooth L1 beta')
 controller = HyperParameterOptimizer(
     base_task_id='df46ff8a0b694305824e429447027a84',
     hyper_parameters=[
-        UniformParameterRange('Args/beta', min_value=0., max_value=1., step_size=0.2),
+        UniformParameterRange('Args/beta', min_value=0., max_value=1., step_size=0.1),
     ],
     objective_metric_title='UV L1',
     objective_metric_series='val',

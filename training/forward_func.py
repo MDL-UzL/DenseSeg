@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from clearml import Logger
 from monai import metrics
@@ -7,8 +9,48 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from models.uv_unet import UVUNet
+from utils import convert_uv_to_coordinates
 
-torch.autograd.set_detect_anomaly(True)
+
+# torch.autograd.set_detect_anomaly(True)
+
+def landmark_regression_via_uv(uv: torch.Tensor,
+                               landmarks: torch.Tensor,
+                               landmark_uv_values: List[torch.Tensor],
+                               mask: torch.Tensor, k: int) -> torch.Tensor:
+    """
+    Calculate the loss for landmark regression via uv maps.
+    :param uv: predicted uv maps (B, C, 2, H, W)
+    :param landmarks: normalized landmarks in range [-1, 1] (B, N, 2)
+    :param landmark_uv_values: list of uv values for all landmarks in each class C
+    :param mask: segmentation mask used to mask uv values to valid segmentation area (B, C, H, W)
+    :param k: number of nearest uv values to consider for coordinate interpolation from uv maps
+    :return: L2 loss for each landmark (B, N), number of landmarks per class (C)
+    """
+    B, C, _, H, W = uv.shape
+    assert mask.shape == (B, C, H, W), 'mask must have the same shape as uv'
+    assert len(landmarks) == len(landmark_uv_values) == C, 'landmarks and landmark_uv_values must contain C elements'
+    assert landmarks.min() >= -1 and landmarks.max() <= 1, 'landmarks must be in range [-1, 1]'
+
+    # mask uv maps to valid segmentation area
+    mask = mask.unsqueeze(2).expand_as(uv)
+    uv[mask.logical_not()] = torch.nan
+
+    lm_hat = []
+    n_lm_per_class = []
+    # handle each class independently due to different number of landmarks and different uv maps
+    for c in range(C):
+        lm_hat.append(convert_uv_to_coordinates(uv[:, c], landmark_uv_values[c], 'linear', k))
+        n_lm_per_class.append(len(landmark_uv_values[c]))
+    lm_hat = torch.stack(lm_hat, dim=1)  # (B, N, 2)
+    # normalize landmarks to range [-1, 1]
+    lm_hat /= torch.tensor([W, H], device=lm_hat.device, dtype=lm_hat.dtype).view(1, 1, 2)
+    lm_hat = 2 * lm_hat - 1
+
+    lm_loss = torch.linalg.vector_norm(lm_hat - landmarks, ord=2, dim=-1)  # (B, N)
+
+    n_lm_per_class = torch.tensor(n_lm_per_class, device=uv.device)
+    return lm_loss, n_lm_per_class
 
 
 def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn: _Loss) -> torch.Tensor:
