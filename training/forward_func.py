@@ -32,9 +32,11 @@ def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn:
 
     return loss
 
+
 @torch.no_grad()
 def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
     return balanced_normalized_uv_loss(uv_hat, uv, torch.nn.L1Loss(reduction='none'))
+
 
 def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
             # can be provided via kwargs dict
