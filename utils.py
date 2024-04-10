@@ -189,35 +189,63 @@ def extract_warped_uv_maps(mean_shape: torch.Tensor, landmarks: torch.Tensor, se
     return uv_maps, atlas_uv_values
 
 
-def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor) -> torch.Tensor:
+def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mode: str, k: int = None) -> torch.Tensor:
     """
     Calculate the coordinates of the uv_values in the uv_map by finding the closest uv value in the uv_map.
-    :param uv_map: UV map of shape (2, H, W)
-    :param uv_values: UV values of shape (N, 2)
-    :return: coordinates of the uv_values in the uv_map of shape (N, 2)
+    UV maps may contain NaN values, which are ignored in the calculation.
+    :param uv_map: UV map of shape (B, 2, H, W)
+    :param uv_values: UV values of shape (B, N, 2)
+    :param mode: 'nearest' or 'linear'
+    :param k: number of closest points to consider in linear mode
+    :return: coordinates of the uv_values in the uv_map of shape (B, N, 2)
     """
 
-    assert uv_map.shape[0] == 2, 'UV map must have 2 channels'
-    assert uv_values.shape[1] == 2, 'UV values must have 2 dimensions'
+    assert uv_map.shape[1] == 2, 'UV map must have 2 channels'
+    assert uv_values.shape[-1] == 2, 'UV values must have 2 dimensions'
+    assert uv_map.shape[0] == uv_values.shape[0], 'Batch size of uv_map and uv_values must match'
+
+    B, _, H, W = uv_map.shape
+    device = uv_map.device
 
     # calculate the distance of each uv value to each uv coordinate
-    uv_coord_dist = uv_map.view(2, -1, 1) - uv_values.transpose(0, 1).view(2, 1, -1)
-    uv_coord_dist = torch.linalg.vector_norm(uv_coord_dist, dim=0)
+    uv_coord_dist = uv_map.view(B, 2, H * W, 1) - uv_values.transpose(1, 2).view(B, 2, 1, -1)  # (B, 2, H*W, N)
+    uv_coord_dist = torch.linalg.vector_norm(uv_coord_dist, dim=1)  # (B, H*W, N)
 
-    # find the closest uv coordinate
-    W = uv_map.shape[2]
-    uv_coord = nanargmin(uv_coord_dist, dim=0)
-    uv_coord = torch.stack([uv_coord // W, uv_coord % W], dim=-1)
+    # extract uv coordinate
+    if mode == 'nearest':
+        uv_coord = nanargmin(uv_coord_dist, dim=1)  # (B, N)
+        uv_coord = torch.stack([uv_coord // W, uv_coord % W], dim=-1)  # (B, N, 2)
+    elif mode == 'linear':
+        assert k is not None, 'k must be given in linear mode'
+        uv_coord = torch.arange(H * W, device=device)
+        uv_coord = torch.stack([uv_coord // W, uv_coord % W], dim=-1)  # (H*W, 2)
+        uv_coord = uv_coord.unsqueeze(0).expand(B, H * W, -1)  # (B, H*W, 2)
+
+        # select the k closest points
+        top_k_indices = torch.topk(uv_coord_dist, k=k, dim=1, largest=False).indices  # (B, H*W, k)
+        top_k_mask = torch.ones_like(uv_coord_dist, dtype=torch.bool)  # (B, H*W, N)
+        top_k_mask.scatter_(1, top_k_indices, False)
+
+        # replace non-top k values with infinity due to its neutral behavior in the softmax
+        # NaN values are already implicitly covered by top k
+        uv_coord_dist = torch.where(top_k_mask, torch.inf, uv_coord_dist)
+        weights = F.softmin(uv_coord_dist, dim=1)  # (B, H*W, N)
+        # (B, H*W, 1, 2) * (B, H*W, N, 1) → (B, H*W, N, 2) → (B, N, 2)
+        uv_coord = torch.sum(uv_coord.unsqueeze(-2) * weights.unsqueeze(-1), dim=1)
+    else:
+        raise ValueError(f'Unknown mode: {mode}. Has to be "nearest" or "linear".')
 
     # HW → WH
     uv_coord = uv_coord.flip(-1)
 
     return uv_coord
 
+
 def nanargmin(tensor, dim=None, keepdim=False):
     max_value = torch.finfo(tensor.dtype).max
     output = tensor.nan_to_num(max_value).argmin(dim=dim, keepdim=keepdim)
     return output
+
 
 if __name__ == '__main__':
     from dataset import JSRTDataset, TRAINING_SHAPES

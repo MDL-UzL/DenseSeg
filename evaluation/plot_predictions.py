@@ -14,7 +14,7 @@ save_plt = False
 save_path = Path('/home/ron/Desktop')
 
 ds = JSRTDatasetUV('test')
-cl_model = InputModel('de3c572f946c47b6a0a1214cde62a6ec')
+cl_model = InputModel('4f88f0a1f49e4d8f885fb4062115884a')
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 rnd_idx = randint(0, len(ds) - 1)
@@ -25,7 +25,7 @@ if save_plt:
     plt.savefig(save_path / 'input.png')
 
 with torch.inference_mode():
-    seg_hat, uv_hat = model.predict(img.unsqueeze(0), mask_uv=False)
+    seg_hat, uv_hat = model.predict(img.unsqueeze(0), mask_uv=True)
     seg_hat = seg_hat.squeeze().float()
     uv_hat = uv_hat.squeeze()
 
@@ -77,8 +77,9 @@ for a_idx, (anatomy, (start_idx, end_idx)) in enumerate(ds.get_anatomical_struct
 
     gt_lms = shape[start_idx:end_idx]
     # convert uv to coordinates
-    lms = convert_uv_to_coordinates(uv_map[a_idx], load_mean_shape_uv_values(anatomy))
-    lms_hat = convert_uv_to_coordinates(uv_hat[a_idx], load_mean_shape_uv_values(anatomy))
+    cnvt_func = lambda uv_map, uv_val: convert_uv_to_coordinates(uv_map.unsqueeze(0), uv_val.unsqueeze(0), 'linear', 5).squeeze(0)
+    lms = cnvt_func(uv_map[a_idx], load_mean_shape_uv_values(anatomy))
+    lms_hat = cnvt_func(uv_hat[a_idx], load_mean_shape_uv_values(anatomy))
     color_code = torch.arange(len(gt_lms))
 
     fig, axs = plt.subplots(1, 3)
