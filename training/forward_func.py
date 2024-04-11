@@ -33,11 +33,14 @@ def landmark_regression_via_uv(uv: torch.Tensor,
     assert mask.shape == (B, C, H, W), 'mask must have the same shape as uv'
     assert len(landmark_uv_values) == C, 'landmarks and landmark_uv_values must contain C elements'
 
-    # mask uv maps to valid segmentation area
-    mask = mask.unsqueeze(2).expand_as(uv)
-    uv[mask.logical_not()] = torch.nan
+    # cloning to maintain original values
+    uv_with_nan = uv.clone()
 
-    lm_hat = convert_list_of_uv_to_coordinates(uv, landmark_uv_values, 'linear', k)  # list of (B, N_c, 2)
+    # mask uv maps to valid segmentation area
+    mask = mask.unsqueeze(2).expand_as(uv_with_nan)
+    uv_with_nan[mask.logical_not()] = torch.nan
+
+    lm_hat = convert_list_of_uv_to_coordinates(uv_with_nan, landmark_uv_values, 'linear', k)  # list of (B, N_c, 2)
     lm_hat = torch.cat(lm_hat, dim=1)  # (B, N, 2)
 
     lm_diff = lm_hat - landmarks  # (B, N, 2)
@@ -72,6 +75,30 @@ def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn:
     return loss
 
 
+def total_variation(uv: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate the total variation of the uv maps.
+    :param uv: uv maps (B, C, UV, H, W)
+    :param mask: segmentation mask used to mask uv values to valid segmentation area (B, C, H, W)
+    :return: total variation of the uv maps
+    """
+    B, C, _, H, W = uv.shape
+    assert mask.shape == (B, C, H, W), 'mask must have the same shape as uv'
+    assert mask.dtype == torch.bool, 'mask must be of type bool'
+    # calculate total variation
+    grad = torch.stack(torch.gradient(uv, dim=(3, 4)), dim=-1)  # (B, C, UV, H, W, 2)
+    tv = torch.linalg.vector_norm(grad, ord=2, dim=[2, -1])  # (B, C, H, W)
+
+    # mask uv maps to valid segmentation area
+    tv = torch.where(mask, tv, 0)
+    tv = tv.pow(2)
+
+    # average by the number of valid pixels
+    tv = tv.sum(dim=[2, 3]) / mask.sum(dim=[2, 3])
+
+    return tv
+
+
 @torch.no_grad()
 def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
     return balanced_normalized_uv_loss(uv_hat, uv, torch.nn.L1Loss(reduction='none'))
@@ -79,7 +106,7 @@ def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
 
 def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
             # can be provided via kwargs dict
-            lambdas: list,  # [lambda_dsc, lambda_uv, lambda_lm]
+            lambdas: list,  # [lambda_dsc, lambda_uv, lambda_lm, lambda_tv]
             model: UVUNet, optimizer: Optimizer, device: torch.device, lm_uv_values: List[torch.Tensor], k: int,
             bce_pos_weight: torch.Tensor, uv_loss_fn) -> (torch.Tensor, torch.Tensor):
     assert any(lambdas), 'At least one weighting for loss must be non-zero'
@@ -91,10 +118,12 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
     else:
         raise ValueError(f'Unknown mode: {mode}')
 
-    lambda_bce, lambda_reg_uv, lambda_lm = lambdas
+
+    lambda_bce, lambda_reg_uv, lambda_lm, lambda_tv = lambdas
     dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
                              num_classes=data_loader.dataset.N_CLASSES)
     uv_l1 = metrics.LossMetric(uv_l1_loss, reduction='mean_batch')
+    tv = metrics.LossMetric(total_variation, reduction='mean_batch')
     loss_collector = metrics.CumulativeAverage()
 
     for img, lm, _, seg_mask, uv_map in data_loader:
@@ -107,12 +136,13 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             seg_hat, uv_hat = model(img)
             bce_loss = F.binary_cross_entropy_with_logits(seg_hat, seg, pos_weight=bce_pos_weight) if lambda_bce else 0
             reg_loss = balanced_normalized_uv_loss(uv_hat, uv, uv_loss_fn).mean() if lambda_reg_uv else 0
+            tv_loss = total_variation(uv_hat, seg.bool()).mean() if lambda_tv else 0
             lm_loss, lm_error = landmark_regression_via_uv(
                 uv=uv_hat, landmarks=lm, landmark_uv_values=lm_uv_values, mask=seg, k=k
             )
             lm_loss = lm_loss if lambda_lm else 0
 
-            uv_loss = lambda_reg_uv * reg_loss + lambda_lm * lm_loss
+            uv_loss = lambda_reg_uv * reg_loss + lambda_lm * lm_loss + lambda_tv * tv_loss
             loss = lambda_bce * bce_loss + uv_loss
 
         if model.training:  # backward
@@ -125,6 +155,7 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
         dsc(seg_hat.sigmoid() > 0.5, seg)
         uv_l1(uv_hat, uv)
+        tv(uv_hat, seg.bool())
 
     # log metrics scalars
     log = Logger.current_logger()
@@ -138,11 +169,17 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
                              xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='dice')
     if any(lambdas[1:]):
         log.report_scalar('UV Loss', mode, iteration=epoch, value=loss_avg[2].item())
-        log.report_scalar('Landmark Error', mode, iteration=epoch, value=loss_avg[5].item())
+        log.report_scalar('Landmark Error [Px]', mode, iteration=epoch, value=loss_avg[5].item())
         log.report_scalar('UV L1', mode, iteration=epoch, value=uv_l1.aggregate().mean().item())
         log.report_histogram('UV L1', mode, iteration=epoch,
                              values=uv_l1.aggregate().cpu().numpy(),
                              xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='uv l1')
+        log.report_scalar('TV Loss', mode, iteration=epoch, value=tv.aggregate().mean().item())
+        log.report_histogram('TV Loss', mode, iteration=epoch,
+                             values=tv.aggregate().cpu().numpy(),
+                             xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='tv')
+
+
         if lambda_reg_uv:
             log.report_scalar('Regression UV Loss', mode, iteration=epoch, value=loss_avg[3].item())
         if lambda_lm:

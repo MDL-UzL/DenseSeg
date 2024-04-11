@@ -17,13 +17,13 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
 if hp.bce and any([hp.reg_uv, hp.lm]):
     task_name = 'Segmentation and UV Map'
-    tags = [hp.uv_loss if hp.reg_uv else '', 'LM' if hp.lm else '']
+    tags = [hp.uv_loss if hp.reg_uv else '', 'LM' if hp.lm else '', 'TV' if hp.tv else '']
 elif hp.bce:
     task_name = 'Segmentation'
     tags = []
 elif hp.uv:
     task_name = f'UV Map {hp.uv_loss}'
-    tags = [hp.uv_loss]
+    tags = [hp.uv_loss, 'TV' if hp.tv else '']
 elif hp.lm:
     task_name = 'Landmark Regression'
     tags = ['LM']
@@ -62,7 +62,7 @@ else:
     raise ValueError(f'Unknown uv loss function {hp.uv_loss}')
 lm_uv_values = [uv_values.to(device) for uv_values in train_dl.dataset.get_anatomical_structure_uv_values().values()]
 
-fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm],
+fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm, hp.tv],
               'k': hp.k, 'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn,
               'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 

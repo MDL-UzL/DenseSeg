@@ -10,6 +10,7 @@ hp_parser.add_argument('--bce', type=float, default=1.0, help='weight for segmen
 hp_parser.add_argument('--reg_uv', type=float, default=1.0, help='weight for uv map regression loss')
 hp_parser.add_argument('--uv_loss', choices=['l1', 'l2', 'smoothl1'], default='smoothl1',
                        help='loss function used for uv map regression')
+hp_parser.add_argument('--tv', type=float, default=1.0, help='weight for total variation loss')
 hp_parser.add_argument('--lm', type=float, default=1.0, help='weight for landmark regression loss')
 hp_parser.add_argument('--k', type=int, default=5, help='number of nearest neighbors for landmark regression')
 hp_parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
