@@ -6,7 +6,7 @@ from clearml import InputModel
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from dataset.jsrt_dataset import JSRTDatasetUV, load_mean_shape_uv_values
+from dataset.jsrt_dataset import JSRTDatasetUV
 from models.uv_unet import UVUNet
 from utils import convert_uv_to_coordinates
 
@@ -14,7 +14,7 @@ save_plt = False
 save_path = Path('/home/ron/Desktop')
 
 ds = JSRTDatasetUV('test')
-cl_model = InputModel('4f88f0a1f49e4d8f885fb4062115884a')
+cl_model = InputModel('b25316e01f8e4afd814086c1e815125f')
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 rnd_idx = randint(0, len(ds) - 1)
@@ -78,8 +78,8 @@ for a_idx, (anatomy, (start_idx, end_idx)) in enumerate(ds.get_anatomical_struct
     gt_lms = shape[start_idx:end_idx]
     # convert uv to coordinates
     cnvt_func = lambda uv_map, uv_val: convert_uv_to_coordinates(uv_map.unsqueeze(0), uv_val.unsqueeze(0), 'linear', 5).squeeze(0)
-    lms = cnvt_func(uv_map[a_idx], load_mean_shape_uv_values(anatomy))
-    lms_hat = cnvt_func(uv_hat[a_idx], load_mean_shape_uv_values(anatomy))
+    lms = cnvt_func(uv_map[a_idx], ds.get_anatomical_structure_uv_values()[anatomy])
+    lms_hat = cnvt_func(uv_hat[a_idx], ds.get_anatomical_structure_uv_values()[anatomy])
     color_code = torch.arange(len(gt_lms))
 
     fig, axs = plt.subplots(1, 3)

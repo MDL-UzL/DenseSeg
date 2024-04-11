@@ -194,15 +194,16 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
     Calculate the coordinates of the uv_values in the uv_map by finding the closest uv value in the uv_map.
     UV maps may contain NaN values, which are ignored in the calculation.
     :param uv_map: UV map of shape (B, 2, H, W)
-    :param uv_values: UV values of shape (B, N, 2)
+    :param uv_values: UV values of shape (B, N_c, 2) where N_c is the number of uv values for each class C
     :param mode: 'nearest' or 'linear'
     :param k: number of closest points to consider in linear mode
-    :return: coordinates of the uv_values in the uv_map of shape (B, N, 2)
+    :return: coordinates of the uv_values in the uv_map of shape (B, N_c, 2) where N_c is the number of uv values for each class C
     """
 
     assert uv_map.shape[1] == 2, 'UV map must have 2 channels'
     assert uv_values.shape[-1] == 2, 'UV values must have 2 dimensions'
     assert uv_map.shape[0] == uv_values.shape[0], 'Batch size of uv_map and uv_values must match'
+    assert k is None or (k > 0 and isinstance(k, int)), 'k must be a positive integer'
 
     B, _, H, W = uv_map.shape
     device = uv_map.device
@@ -212,7 +213,7 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
     uv_coord_dist = torch.linalg.vector_norm(uv_coord_dist, dim=1)  # (B, H*W, N)
 
     # extract uv coordinate
-    if mode == 'nearest':
+    if mode == 'nearest' or k == 1:
         uv_coord = nanargmin(uv_coord_dist, dim=1)  # (B, N)
         uv_coord = torch.stack([uv_coord // W, uv_coord % W], dim=-1)  # (B, N, 2)
     elif mode == 'linear':
@@ -226,7 +227,7 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
         top_k_mask = torch.ones_like(uv_coord_dist, dtype=torch.bool)  # (B, H*W, N)
         top_k_mask.scatter_(1, top_k_indices, False)
 
-        # replace non-top k values with infinity due to its neutral behavior in the softmax
+        # replace non-top k values with -infinity due to its neutral behavior in the softmax (softmin: inf → -inf)
         # NaN values are already implicitly covered by top k
         uv_coord_dist = torch.where(top_k_mask, torch.inf, uv_coord_dist)
         weights = F.softmin(uv_coord_dist, dim=1)  # (B, H*W, N)
@@ -239,6 +240,25 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
     uv_coord = uv_coord.flip(-1)
 
     return uv_coord
+
+
+def convert_list_of_uv_to_coordinates(uv_map: torch.Tensor, uv_values: list, mode: str, k: int = None) -> list:
+    """
+    Calculate the coordinates of the uv_values in the uv_map by finding the closest uv value in the uv_map for each class C.
+    UV maps may contain NaN values, which are ignored in the calculation.
+    :param uv_map: uv map of shape (B, C, 2, H, W)
+    :param uv_values: list of length C containing uv values of shape (N, 2)
+    :param mode: 'nearest' or 'linear'
+    :param k: number of closest points to consider in linear mode
+    :return: list of length C containing coordinates of the uv_values in the uv_map of shape (B, N, 2)
+    """
+    B, C = uv_map.shape[:2]
+    assert len(uv_values) == C, 'Number of list entries must match the number of classes'
+    # handle each class independently due to different number of landmarks and different uv maps
+    uv_values_B = list(map(lambda uv: uv.unsqueeze(0).expand(B, -1, -1), uv_values))
+    coord_list = list(map(lambda c: convert_uv_to_coordinates(uv_map[:, c], uv_values_B[c], mode, k), range(C)))
+
+    return coord_list
 
 
 def nanargmin(tensor, dim=None, keepdim=False):

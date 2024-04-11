@@ -101,9 +101,14 @@ class JSRTDatasetUV(JSRTDataset):
 
         return img, target_lm, dist_map, seg_mask, uv_map
 
+    @classmethod
+    def get_anatomical_structure_uv_values(cls) -> OrderedDict:
+        uv_values = torch.load('dataset/data/mean_shape_uv_values.pth')
+        name_uv_dict = OrderedDict()
+        for organ in cls.NUM_LANDMARKS.keys():
+            name_uv_dict[organ] = uv_values[organ]
 
-def load_mean_shape_uv_values(anatomy: str):
-    return torch.load('dataset/data/mean_shape_uv_values.pth')[anatomy]
+        return name_uv_dict
 
 
 if __name__ == '__main__':

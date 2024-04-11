@@ -15,15 +15,18 @@ hp = hp_parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
-if hp.seg and hp.uv:
+if hp.bce and any([hp.reg_uv, hp.lm]):
     task_name = 'Segmentation and UV Map'
-    tags = [hp.uv_loss]
-elif hp.seg:
+    tags = [hp.uv_loss if hp.reg_uv else '', 'LM' if hp.lm else '']
+elif hp.bce:
     task_name = 'Segmentation'
     tags = []
 elif hp.uv:
     task_name = f'UV Map {hp.uv_loss}'
     tags = [hp.uv_loss]
+elif hp.lm:
+    task_name = 'Landmark Regression'
+    tags = ['LM']
 else:
     raise ValueError('At least one of seg or uv must be True')
 
@@ -31,7 +34,7 @@ task = Task.init(project_name='DenseSeg', task_name=task_name, tags=tags, auto_c
                  auto_connect_arg_parser={'gpu_id': False}, auto_resource_monitoring=False)
 # init pytorch
 torch.manual_seed(hp.seed)
-if hp.gpu_id is None and torch.cuda.is_available(): # workaround to enable GPU selection during HPO
+if hp.gpu_id is None and torch.cuda.is_available():  # workaround to enable GPU selection during HPO
     hp.gpu_id = 0
     Warning('GPU is available but not selected. Defaulting to GPU 0 to enable CUDA_VISIBLE_DEVICES selection.')
 device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu')
@@ -57,9 +60,11 @@ elif hp.uv_loss == 'smoothl1':
     uv_loss_fn = torch.nn.SmoothL1Loss(reduction='none', beta=hp.beta)
 else:
     raise ValueError(f'Unknown uv loss function {hp.uv_loss}')
+lm_uv_values = [uv_values.to(device) for uv_values in train_dl.dataset.get_anatomical_structure_uv_values().values()]
 
-fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'train_seg': hp.seg, 'train_uv': hp.uv,
-              'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device), 'uv_loss_fn': uv_loss_fn}
+fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm],
+              'k': hp.k, 'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn,
+              'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 
 for epoch in trange(hp.epochs, desc='training'):
     forward('train', train_dl, epoch, **fwd_kwargs)
