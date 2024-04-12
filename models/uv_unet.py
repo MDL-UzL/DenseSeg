@@ -78,13 +78,13 @@ class UVUNet(LoadableModel):
         return seg, uv
 
 
-if __name__ == '__main__':
-    from torchinfo import summary
-    import torch
-
-    model = UVUNet(n_classes=17)
-    print(model)
-    summary(model, (1, 1, 256, 256))
-    seg, uv = model(torch.randn(1, 1, 256, 256))
-    print(seg.shape, uv.shape)
-    seg_hat, uv_hat = model.predict(torch.randn(1, 1, 256, 256))
+# if __name__ == '__main__':
+#     from torchinfo import summary
+#     import torch
+#
+#     model = UVUNet(n_classes=17)
+#     print(model)
+#     summary(model, (1, 1, 256, 256))
+#     seg, uv = model(torch.randn(1, 1, 256, 256))
+#     print(seg.shape, uv.shape)
+#     seg_hat, uv_hat = model.predict(torch.randn(1, 1, 256, 256))

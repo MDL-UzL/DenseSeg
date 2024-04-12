@@ -10,6 +10,7 @@ from dataset.jsrt_dataset import JSRTDatasetUV
 from models.uv_unet import UVUNet
 from training.forward_func import forward
 from training.hyper_params import hp_parser
+from kornia.augmentation import AugmentationSequential, RandomAffine
 
 hp = hp_parser.parse_args()
 
@@ -29,6 +30,9 @@ elif hp.lm:
     tags = ['LM']
 else:
     raise ValueError('At least one of seg or uv must be True')
+use_data_aug = hp.rotate or hp.tranlate or hp.scale
+if use_data_aug:
+    tags.append('DataAug')
 
 task = Task.init(project_name='DenseSeg', task_name=task_name, tags=tags, auto_connect_frameworks=False,
                  auto_connect_arg_parser={'gpu_id': False}, auto_resource_monitoring=False)
@@ -62,8 +66,16 @@ else:
     raise ValueError(f'Unknown uv loss function {hp.uv_loss}')
 lm_uv_values = [uv_values.to(device) for uv_values in train_dl.dataset.get_anatomical_structure_uv_values().values()]
 
+if use_data_aug:
+    data_aug = AugmentationSequential(
+        RandomAffine(degrees=hp.rotate, translate=(hp.translate,) * 2, scale=(1 - hp.scale, 1 + hp.scale), p=1),
+        data_keys=['image', 'mask', 'image', 'image', 'keypoints']
+    )
+else:
+    data_aug = None
+
 fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm, hp.tv],
-              'k': hp.k, 'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn,
+              'k': hp.k, 'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn, 'data_aug': data_aug,
               'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 
 for epoch in trange(hp.epochs, desc='training'):

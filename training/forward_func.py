@@ -10,9 +10,13 @@ from torch.utils.data import DataLoader
 
 from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
+from kornia.augmentation import AugmentationSequential
 
+torch.autograd.set_detect_anomaly(True)
 
-# torch.autograd.set_detect_anomaly(True)
+def landmark_uv_loss(uv, landmarks, landmark_uv_values):
+    pass
+
 
 def landmark_regression_via_uv(uv: torch.Tensor,
                                landmarks: torch.Tensor,
@@ -29,7 +33,7 @@ def landmark_regression_via_uv(uv: torch.Tensor,
     """
     B, C, _, H, W = uv.shape
     device = uv.device
-    # N_c = torch.tensor([len(lm) for lm in landmark_uv_values], device=device)
+    N_c = torch.tensor([len(lm) for lm in landmark_uv_values], device=device)
     assert mask.shape == (B, C, H, W), 'mask must have the same shape as uv'
     assert len(landmark_uv_values) == C, 'landmarks and landmark_uv_values must contain C elements'
 
@@ -54,10 +58,8 @@ def landmark_regression_via_uv(uv: torch.Tensor,
 
 
 def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn: _Loss) -> torch.Tensor:
-    with torch.no_grad():
-        assert loss_fn.reduction == 'none', 'loss_fn must have reduction set to none'
-        assert not uv.isnan().all(), 'uv must contain some valid values'
-        assert not uv_hat.isnan().all(), 'uv_hat must contain some valid values'
+    assert loss_fn.reduction == 'none', 'loss_fn must have reduction set to none'
+    assert not uv.isnan().all(), 'uv must contain some valid values'
 
     # (B, C, 2, H, W) -> (B, C, 2 * H * W)
     uv_hat_flat = uv_hat.flatten(start_dim=2)
@@ -70,7 +72,8 @@ def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn:
 
     # normalize each class with its number of valid pixels
     valid_pxl = nan_gt_mask.logical_not().sum(-1)  # (B, C)
-    loss = loss_fn(uv_hat_flat, uv_flat).sum(-1) / valid_pxl  # (B, C)
+    # 1 is added to avoid division by zero
+    loss = loss_fn(uv_hat_flat, uv_flat).sum(-1) / (valid_pxl + 1)  # (B, C)
 
     return loss
 
@@ -88,14 +91,14 @@ def total_variation(uv: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     # calculate total variation
     tv = torch.stack(torch.gradient(uv, dim=(3, 4), edge_order=1), dim=-1)  # (B, C, UV, H, W, 2)
     tv = torch.linalg.vector_norm(tv, ord=2, dim=-1)  # (B, C, UV, H, W)
-    tv = tv.mean(2) # (B, C, H, W)
+    tv = tv.mean(2)  # (B, C, H, W)
 
     # mask uv maps to valid segmentation area
     tv = torch.where(mask, tv, 0)
     tv = tv.pow(2)
 
-    # average by the number of valid pixels
-    tv = tv.sum(dim=[2, 3]) / mask.sum(dim=[2, 3])
+    # average by the number of valid pixels (1 is added to avoid division by zero)
+    tv = tv.sum(dim=[2, 3]) / (mask.sum(dim=[2, 3]) + 1)
 
     return tv
 
@@ -109,7 +112,8 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             # can be provided via kwargs dict
             lambdas: list,  # [lambda_dsc, lambda_uv, lambda_lm, lambda_tv]
             model: UVUNet, optimizer: Optimizer, device: torch.device, lm_uv_values: List[torch.Tensor], k: int,
-            bce_pos_weight: torch.Tensor, uv_loss_fn) -> (torch.Tensor, torch.Tensor):
+            bce_pos_weight: torch.Tensor, uv_loss_fn, data_aug: AugmentationSequential = None) -> (
+        torch.Tensor, torch.Tensor):
     assert any(lambdas), 'At least one weighting for loss must be non-zero'
     # set model mode according to mode
     if mode == 'train':
@@ -118,7 +122,6 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         model.eval()
     else:
         raise ValueError(f'Unknown mode: {mode}')
-
 
     lambda_bce, lambda_reg_uv, lambda_lm, lambda_tv = lambdas
     dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
@@ -133,18 +136,38 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         seg = seg_mask.to(device, non_blocking=True)
         uv = uv_map.to(device, non_blocking=True)
 
+        if data_aug and model.training:
+            img, seg, uv0, uv1, lm = data_aug(img, seg, uv[:, :, 0], uv[:, :, 1], lm)
+            uv = torch.stack([uv0, uv1], dim=2)
+            uv = torch.where(seg.bool().unsqueeze(2).expand_as(uv), uv, torch.nan)
+
+        #     # from matplotlib import pyplot as plt
+        #     # plt.imshow(img[0, 0], cmap='gray')
+        #     # plt.scatter(lm[0, :, 0], lm[0, :, 1], c='r')
+        #     #
+        #     # plt.figure()
+        #     # plt.imshow(img[0, 0], cmap='gray')
+        #     # plt.imshow(seg[0, 0], alpha=0.5)
+        #     #
+        #     # plt.figure()
+        #     # plt.imshow(img[0, 0], cmap='gray')
+        #     # plt.imshow(uv[0, 0, 0], alpha=0.5)
+        #     #
+        #     # plt.show()
+
         with torch.set_grad_enabled(model.training):  # forward
             seg_hat, uv_hat = model(img)
             bce_loss = F.binary_cross_entropy_with_logits(seg_hat, seg, pos_weight=bce_pos_weight) if lambda_bce else 0
             reg_loss = balanced_normalized_uv_loss(uv_hat, uv, uv_loss_fn).mean() if lambda_reg_uv else 0
             tv_loss = total_variation(uv_hat, seg.bool()).mean() if lambda_tv else 0
-            lm_loss, lm_error = landmark_regression_via_uv(
-                uv=uv_hat, landmarks=lm, landmark_uv_values=lm_uv_values, mask=seg, k=k
-            )
-            lm_loss = lm_loss if lambda_lm else 0
+            lm_loss, lm_error = 0, 0# landmark_regression_via_uv(
+            #     uv=uv_hat, landmarks=lm, landmark_uv_values=lm_uv_values, mask=seg, k=k
+            # )
+            lm_loss = 0  # lm_loss if lambda_lm else 0
 
             uv_loss = lambda_reg_uv * reg_loss + lambda_lm * lm_loss + lambda_tv * tv_loss
-            loss = lambda_bce * bce_loss + uv_loss
+            # loss = lambda_bce * bce_loss + uv_loss
+            loss = tv_loss
 
         if model.training:  # backward
             optimizer.zero_grad(set_to_none=True)
@@ -152,12 +175,12 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             optimizer.step()
 
         # track metrics
-        with torch.no_grad():
-            batch_size = len(img)
-            loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
-            dsc(seg_hat.sigmoid() > 0.5, seg)
-            uv_l1(uv_hat, uv)
-            tv(uv_hat, seg.bool())
+        batch_size = len(img)
+        loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
+        dsc(seg_hat.sigmoid() > 0.5, seg)
+        uv_l1(uv_hat, uv)
+        tv(uv_hat, seg.bool())
+    torch.cuda.empty_cache()
 
     # log metrics scalars
     log = Logger.current_logger()
@@ -180,7 +203,6 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         log.report_histogram('TV Loss', mode, iteration=epoch,
                              values=tv.aggregate().cpu().numpy(),
                              xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='tv')
-
 
         if lambda_reg_uv:
             log.report_scalar('Regression UV Loss', mode, iteration=epoch, value=loss_avg[3].item())

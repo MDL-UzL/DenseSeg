@@ -204,6 +204,7 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
     assert uv_values.shape[-1] == 2, 'UV values must have 2 dimensions'
     assert uv_map.shape[0] == uv_values.shape[0], 'Batch size of uv_map and uv_values must match'
     assert k is None or (k > 0 and isinstance(k, int)), 'k must be a positive integer'
+    assert uv_map.isnan().logical_not().sum() >= k, 'UV map must contain at least k valid values'
 
     B, _, H, W = uv_map.shape
     device = uv_map.device
@@ -265,6 +266,7 @@ def nanargmin(tensor, dim=None, keepdim=False):
     max_value = torch.finfo(tensor.dtype).max
     output = tensor.nan_to_num(max_value).argmin(dim=dim, keepdim=keepdim)
     return output
+
 
 
 if __name__ == '__main__':
