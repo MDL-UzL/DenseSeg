@@ -162,7 +162,6 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
     dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
                              num_classes=data_loader.dataset.N_CLASSES)
     uv_l1 = metrics.LossMetric(uv_l1_loss, reduction='mean_batch')
-    lm_uv_l1 = metrics.LossMetric(landmark_uv_loss, reduction='mean_batch')
     tv = metrics.LossMetric(total_variation, reduction='mean_batch')
     loss_collector = metrics.CumulativeAverage()
 
@@ -176,20 +175,6 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             img, seg, uv0, uv1, lm = data_aug(img, seg, uv[:, :, 0], uv[:, :, 1], lm)
             uv = torch.stack([uv0, uv1], dim=2)
             uv = torch.where(seg.bool().unsqueeze(2).expand_as(uv), uv, torch.nan)
-
-        #     # from matplotlib import pyplot as plt
-        #     # plt.imshow(img[0, 0], cmap='gray')
-        #     # plt.scatter(lm[0, :, 0], lm[0, :, 1], c='r')
-        #     #
-        #     # plt.figure()
-        #     # plt.imshow(img[0, 0], cmap='gray')
-        #     # plt.imshow(seg[0, 0], alpha=0.5)
-        #     #
-        #     # plt.figure()
-        #     # plt.imshow(img[0, 0], cmap='gray')
-        #     # plt.imshow(uv[0, 0, 0], alpha=0.5)
-        #     #
-        #     # plt.show()
 
         with torch.set_grad_enabled(model.training):  # forward
             seg_hat, uv_hat = model(img)
