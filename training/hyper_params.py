@@ -11,7 +11,6 @@ hp_parser.add_argument('--reg_uv', type=float, default=1, help='weight for uv ma
 hp_parser.add_argument('--uv_loss', choices=['l1', 'l2', 'smoothl1'], default='l1',
                        help='loss function used for uv map regression')
 hp_parser.add_argument('--tv', type=float, default=1, help='weight for total variation loss')
-hp_parser.add_argument('--lm', type=float, default=1, help='weight for uv regression at landmarks')
 hp_parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
 hp_parser.add_argument('--batch_size', type=int, default=8)
 hp_parser.add_argument('--infer_batch_size', type=int, default=8, help='batch size during validation and testing')

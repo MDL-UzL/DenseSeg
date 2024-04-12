@@ -16,18 +16,15 @@ hp = hp_parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
-if hp.bce and any([hp.reg_uv, hp.lm]):
+if hp.bce and any([hp.reg_uv]):
     task_name = 'Segmentation and UV Map'
-    tags = [hp.uv_loss if hp.reg_uv else '', 'LM' if hp.lm else '', 'TV' if hp.tv else '']
+    tags = [hp.uv_loss if hp.reg_uv else '', 'TV' if hp.tv else '']
 elif hp.bce:
     task_name = 'Segmentation'
     tags = []
 elif hp.reg_uv:
     task_name = f'UV Map {hp.uv_loss}'
     tags = [hp.uv_loss, 'TV' if hp.tv else '']
-elif hp.lm:
-    task_name = 'Landmark UV Regression'
-    tags = ['LM']
 else:
     raise ValueError('At least one of seg or uv must be True')
 use_data_aug = hp.rotate or hp.tranlate or hp.scale
@@ -74,7 +71,7 @@ if use_data_aug:
 else:
     data_aug = None
 
-fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm, hp.tv],
+fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.tv],
               'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn, 'data_aug': data_aug,
               'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 

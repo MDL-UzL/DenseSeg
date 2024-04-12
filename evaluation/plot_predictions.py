@@ -14,7 +14,7 @@ save_plt = False
 save_path = Path('/home/ron/Desktop')
 
 ds = JSRTDatasetUV('test')
-cl_model = InputModel('b25316e01f8e4afd814086c1e815125f')
+cl_model = InputModel('89fe0a03364f4ab492b9508a8de47623')
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 rnd_idx = randint(0, len(ds) - 1)

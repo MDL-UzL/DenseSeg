@@ -158,7 +158,7 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
     else:
         raise ValueError(f'Unknown mode: {mode}')
 
-    lambda_bce, lambda_reg_uv, lambda_lm, lambda_tv = lambdas
+    lambda_bce, lambda_reg_uv, lambda_tv = lambdas
     dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
                              num_classes=data_loader.dataset.N_CLASSES)
     uv_l1 = metrics.LossMetric(uv_l1_loss, reduction='mean_batch')
@@ -195,10 +195,10 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             seg_hat, uv_hat = model(img)
             bce_loss = F.binary_cross_entropy_with_logits(seg_hat, seg, pos_weight=bce_pos_weight) if lambda_bce else 0
             reg_loss = balanced_normalized_uv_loss(uv_hat, uv, uv_loss_fn).mean() if lambda_reg_uv else 0
-            lm_loss = landmark_uv_loss(uv_hat, lm, lm_uv_values, uv_loss_fn).mean() if lambda_lm else 0
+            lm_loss = landmark_uv_loss(uv_hat, lm, lm_uv_values, uv_loss_fn).mean() if lambda_reg_uv else 0
             tv_loss = total_variation(uv_hat, seg.bool()).mean() if lambda_tv else 0
 
-            uv_loss = lambda_reg_uv * reg_loss + lambda_lm * lm_loss + lambda_tv * tv_loss
+            uv_loss = lambda_reg_uv * (reg_loss + lm_loss) / 2 + lambda_tv * tv_loss
             loss = lambda_bce * bce_loss + uv_loss
 
         if model.training:  # backward
@@ -236,5 +236,4 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
 
         if lambda_reg_uv:
             log.report_scalar('Regression UV Loss', mode, iteration=epoch, value=loss_avg[3].item())
-        if lambda_lm:
             log.report_scalar('Landmark UV Loss', mode, iteration=epoch, value=loss_avg[4].item())
