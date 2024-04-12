@@ -50,7 +50,7 @@ def landmark_regression_via_uv(uv: torch.Tensor,
     lm_diff = torch.linalg.vector_norm(lm_diff, ord=2, dim=-1).mean()
     lm_diff_norm = torch.linalg.vector_norm(lm_diff_norm, ord=2, dim=-1).mean()
 
-    return lm_diff_norm, lm_diff
+    return lm_diff_norm, lm_diff.detach()
 
 
 def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn: _Loss) -> torch.Tensor:
@@ -86,8 +86,9 @@ def total_variation(uv: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     assert mask.shape == (B, C, H, W), 'mask must have the same shape as uv'
     assert mask.dtype == torch.bool, 'mask must be of type bool'
     # calculate total variation
-    grad = torch.stack(torch.gradient(uv, dim=(3, 4)), dim=-1)  # (B, C, UV, H, W, 2)
-    tv = torch.linalg.vector_norm(grad, ord=2, dim=[2, -1])  # (B, C, H, W)
+    tv = torch.stack(torch.gradient(uv, dim=(3, 4), edge_order=1), dim=-1)  # (B, C, UV, H, W, 2)
+    tv = torch.linalg.vector_norm(tv, ord=2, dim=-1)  # (B, C, UV, H, W)
+    tv = tv.mean(2) # (B, C, H, W)
 
     # mask uv maps to valid segmentation area
     tv = torch.where(mask, tv, 0)
@@ -151,11 +152,12 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             optimizer.step()
 
         # track metrics
-        batch_size = len(img)
-        loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
-        dsc(seg_hat.sigmoid() > 0.5, seg)
-        uv_l1(uv_hat, uv)
-        tv(uv_hat, seg.bool())
+        with torch.no_grad():
+            batch_size = len(img)
+            loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
+            dsc(seg_hat.sigmoid() > 0.5, seg)
+            uv_l1(uv_hat, uv)
+            tv(uv_hat, seg.bool())
 
     # log metrics scalars
     log = Logger.current_logger()

@@ -21,7 +21,7 @@ if hp.bce and any([hp.reg_uv, hp.lm]):
 elif hp.bce:
     task_name = 'Segmentation'
     tags = []
-elif hp.uv:
+elif hp.reg_uv:
     task_name = f'UV Map {hp.uv_loss}'
     tags = [hp.uv_loss, 'TV' if hp.tv else '']
 elif hp.lm:

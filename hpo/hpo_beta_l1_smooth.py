@@ -9,7 +9,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 task = Task.init('DenseSeg/HPO', 'Smooth L1 beta')
 
 controller = HyperParameterOptimizer(
-    base_task_id='df46ff8a0b694305824e429447027a84',
+    base_task_id='6f44e698c62a4ff5973633731e6d6061',
     hyper_parameters=[
         UniformParameterRange('Args/beta', min_value=0., max_value=1., step_size=0.1),
     ],
@@ -18,7 +18,8 @@ controller = HyperParameterOptimizer(
     objective_metric_sign='min',
     max_number_of_concurrent_tasks=1,
     optimizer_class=GridSearch,
-    save_top_k_tasks_only=10
+    save_top_k_tasks_only=10,
+
 )
 
 controller.start_locally()
