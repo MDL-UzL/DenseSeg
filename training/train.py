@@ -26,7 +26,7 @@ elif hp.reg_uv:
     task_name = f'UV Map {hp.uv_loss}'
     tags = [hp.uv_loss, 'TV' if hp.tv else '']
 elif hp.lm:
-    task_name = 'Landmark Regression'
+    task_name = 'Landmark UV Regression'
     tags = ['LM']
 else:
     raise ValueError('At least one of seg or uv must be True')
@@ -75,7 +75,7 @@ else:
     data_aug = None
 
 fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.lm, hp.tv],
-              'k': hp.k, 'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn, 'data_aug': data_aug,
+              'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn, 'data_aug': data_aug,
               'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 
 for epoch in trange(hp.epochs, desc='training'):

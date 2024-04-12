@@ -11,13 +11,48 @@ from torch.utils.data import DataLoader
 from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
 from kornia.augmentation import AugmentationSequential
+from kornia.geometry.conversions import normalize_pixel_coordinates
 
-torch.autograd.set_detect_anomaly(True)
-
-def landmark_uv_loss(uv, landmarks, landmark_uv_values):
-    pass
+# torch.autograd.set_detect_anomaly(True)
 
 
+def landmark_uv_loss(uv: torch.Tensor, landmarks: torch.Tensor, landmark_uv_values: List[torch.Tensor],
+                     loss_fn: _Loss) -> torch.Tensor:
+    assert loss_fn.reduction == 'none', 'loss_fn must have reduction set to none'
+    assert not uv.isnan().any(), 'uv should not contain NaN values'
+
+    B, C, _, H, W = uv.shape
+    device = uv.device
+
+    norm_lm = normalize_pixel_coordinates(landmarks, H, W)
+
+    # get the index of the landmarks for each class
+    N_c = [len(lm) for lm in landmark_uv_values]
+    N_c.insert(0, 0)
+    anatomy_idx = torch.tensor(N_c, device=device).cumsum(0)
+    loss = torch.zeros(B, C, device=device)
+    for c in range(C):
+        start_idx, end_idx = anatomy_idx[c], anatomy_idx[c + 1]
+        sample_point = norm_lm[:, start_idx:end_idx]  # (B, N_c, 2)
+        outside_mask = (sample_point < -1) | (sample_point > 1)
+        outside_mask = outside_mask.any(dim=-1)
+        if outside_mask.all():
+            continue
+
+        uv_values_hat = F.grid_sample(uv[:, c], sample_point.view(B, 1, -1, 2),
+                                      align_corners=True, mode='bilinear').squeeze(2).permute(0, 2, 1)  # (B, N_c, 2)
+        uv_values = landmark_uv_values[c].unsqueeze(0).expand(B, -1, -1).clone()  # (B, N_c, 2)
+
+        # zero out values outside the valid range
+        uv_values[outside_mask] = 0
+        uv_values_hat[outside_mask] = 0
+
+        loss[:, c] = loss_fn(uv_values_hat, uv_values).mean([1, 2])
+
+    return loss
+
+
+# take a lot of VRAM and is unstable for training. Use landmark_uv_loss instead.
 def landmark_regression_via_uv(uv: torch.Tensor,
                                landmarks: torch.Tensor,
                                landmark_uv_values: List[torch.Tensor],
@@ -110,8 +145,8 @@ def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
 
 def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
             # can be provided via kwargs dict
-            lambdas: list,  # [lambda_dsc, lambda_uv, lambda_lm, lambda_tv]
-            model: UVUNet, optimizer: Optimizer, device: torch.device, lm_uv_values: List[torch.Tensor], k: int,
+            lambdas: list,  # [lambda_dsc, lambda_uv, lambda_tv]
+            model: UVUNet, optimizer: Optimizer, device: torch.device, lm_uv_values: List[torch.Tensor],
             bce_pos_weight: torch.Tensor, uv_loss_fn, data_aug: AugmentationSequential = None) -> (
         torch.Tensor, torch.Tensor):
     assert any(lambdas), 'At least one weighting for loss must be non-zero'
@@ -127,6 +162,7 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
     dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
                              num_classes=data_loader.dataset.N_CLASSES)
     uv_l1 = metrics.LossMetric(uv_l1_loss, reduction='mean_batch')
+    lm_uv_l1 = metrics.LossMetric(landmark_uv_loss, reduction='mean_batch')
     tv = metrics.LossMetric(total_variation, reduction='mean_batch')
     loss_collector = metrics.CumulativeAverage()
 
@@ -159,15 +195,11 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             seg_hat, uv_hat = model(img)
             bce_loss = F.binary_cross_entropy_with_logits(seg_hat, seg, pos_weight=bce_pos_weight) if lambda_bce else 0
             reg_loss = balanced_normalized_uv_loss(uv_hat, uv, uv_loss_fn).mean() if lambda_reg_uv else 0
+            lm_loss = landmark_uv_loss(uv_hat, lm, lm_uv_values, uv_loss_fn).mean() if lambda_lm else 0
             tv_loss = total_variation(uv_hat, seg.bool()).mean() if lambda_tv else 0
-            lm_loss, lm_error = 0, 0# landmark_regression_via_uv(
-            #     uv=uv_hat, landmarks=lm, landmark_uv_values=lm_uv_values, mask=seg, k=k
-            # )
-            lm_loss = 0  # lm_loss if lambda_lm else 0
 
             uv_loss = lambda_reg_uv * reg_loss + lambda_lm * lm_loss + lambda_tv * tv_loss
-            # loss = lambda_bce * bce_loss + uv_loss
-            loss = tv_loss
+            loss = lambda_bce * bce_loss + uv_loss
 
         if model.training:  # backward
             optimizer.zero_grad(set_to_none=True)
@@ -176,15 +208,14 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
 
         # track metrics
         batch_size = len(img)
-        loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss, lm_error], count=batch_size)
+        loss_collector.append([loss, bce_loss, uv_loss, reg_loss, lm_loss], count=batch_size)
         dsc(seg_hat.sigmoid() > 0.5, seg)
         uv_l1(uv_hat, uv)
         tv(uv_hat, seg.bool())
-    torch.cuda.empty_cache()
 
     # log metrics scalars
     log = Logger.current_logger()
-    loss_avg = loss_collector.aggregate()  # [loss, bce, uv, reg, lm, lm_err]
+    loss_avg = loss_collector.aggregate()  # [loss, bce, uv, reg, lm]
     log.report_scalar('Loss', mode, iteration=epoch, value=loss_avg[0].item())
     if lambda_bce:
         log.report_scalar('BCE', mode, iteration=epoch, value=loss_avg[1].item())
@@ -194,7 +225,6 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
                              xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='dice')
     if any(lambdas[1:]):
         log.report_scalar('UV Loss', mode, iteration=epoch, value=loss_avg[2].item())
-        log.report_scalar('Landmark Error [Px]', mode, iteration=epoch, value=loss_avg[5].item())
         log.report_scalar('UV L1', mode, iteration=epoch, value=uv_l1.aggregate().mean().item())
         log.report_histogram('UV L1', mode, iteration=epoch,
                              values=uv_l1.aggregate().cpu().numpy(),
@@ -207,4 +237,4 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         if lambda_reg_uv:
             log.report_scalar('Regression UV Loss', mode, iteration=epoch, value=loss_avg[3].item())
         if lambda_lm:
-            log.report_scalar('Landmark Loss', mode, iteration=epoch, value=loss_avg[4].item())
+            log.report_scalar('Landmark UV Loss', mode, iteration=epoch, value=loss_avg[4].item())
