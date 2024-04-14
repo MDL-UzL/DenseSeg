@@ -27,7 +27,7 @@ elif hp.reg_uv:
     tags = [hp.uv_loss, 'TV' if hp.tv else '']
 else:
     raise ValueError('At least one of seg or uv must be True')
-use_data_aug = hp.rotate or hp.tranlate or hp.scale
+use_data_aug = hp.rotate or hp.translate or hp.scale
 if use_data_aug:
     tags.append('DataAug')
 

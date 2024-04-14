@@ -1,9 +1,9 @@
 import os
 
+import optuna
 from clearml import Task
 from clearml.automation import HyperParameterOptimizer, UniformParameterRange, UniformIntegerParameterRange
 from clearml.automation.optuna import OptimizerOptuna
-import optuna
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "5"
@@ -11,7 +11,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 task = Task.init('DenseSeg/HPO', 'lambda and data augmentation')
 
 controller = HyperParameterOptimizer(
-    base_task_id='9ed165baa5f746579bd72d9d2522ff20',
+    base_task_id='c60977f3af0c4a779d5b5c6d73012a94',
     hyper_parameters=[
         # lambda
         UniformParameterRange('Args/bce', min_value=0.5, max_value=10., step_size=0.5),
@@ -33,8 +33,8 @@ controller = HyperParameterOptimizer(
     sampler=optuna.samplers.TPESampler(),
     time_limit_per_job=20,
     max_iteration_per_job=500,
-    total_max_jobs=150
-
+    total_max_jobs=150,
+    pool_period_min=1,
 )
 
 controller.start_locally()
@@ -42,3 +42,7 @@ controller.start_locally()
 controller.wait()
 # make sure we stop all jobs
 controller.stop()
+
+# save the optuna optimizer results
+task.upload_artifact('optuna_study.pkl', artifact_object=controller.get_optimizer()._study, auto_pickle=True)
+print(controller.get_top_experiments_details(3, True, True, True))
