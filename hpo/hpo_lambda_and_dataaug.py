@@ -45,4 +45,3 @@ controller.stop()
 
 # save the optuna optimizer results
 task.upload_artifact('optuna_study.pkl', artifact_object=controller.get_optimizer()._study, auto_pickle=True)
-print(controller.get_top_experiments_details(3, True, True, True))
