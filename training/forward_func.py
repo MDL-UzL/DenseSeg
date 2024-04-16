@@ -13,11 +13,20 @@ from utils import convert_list_of_uv_to_coordinates
 from kornia.augmentation import AugmentationSequential
 from kornia.geometry.conversions import normalize_pixel_coordinates
 
+
 # torch.autograd.set_detect_anomaly(True)
 
 
 def landmark_uv_loss(uv: torch.Tensor, landmarks: torch.Tensor, landmark_uv_values: List[torch.Tensor],
                      loss_fn: _Loss) -> torch.Tensor:
+    """
+    Calculate the difference between the predicted uv values and the ground truth uv values at the given landmarks.
+    :param uv: predicted uv maps (B, C, UV, H, W)
+    :param landmarks: unnormalized landmarks in coordinates (B, N, 2)
+    :param landmark_uv_values: ground truth uv values for each landmark in each class C. List of (B, N_c, 2)
+    :param loss_fn: metric to calculate the difference between the predicted and ground truth uv values
+    :return: difference between the predicted and ground truth uv values at the given landmarks
+    """
     assert loss_fn.reduction == 'none', 'loss_fn must have reduction set to none'
     assert not uv.isnan().any(), 'uv should not contain NaN values'
 
@@ -93,6 +102,14 @@ def landmark_regression_via_uv(uv: torch.Tensor,
 
 
 def balanced_normalized_uv_loss(uv_hat: torch.Tensor, uv: torch.Tensor, loss_fn: _Loss) -> torch.Tensor:
+    """
+    Calculate the difference between the predicted uv values and the ground truth uv values. The final loss is then
+    weighted by the number of valid pixels for each class.
+    :param uv_hat: predicted uv maps (B, C, UV, H, W)
+    :param uv: ground truth uv maps (B, C, UV, H, W)
+    :param loss_fn: metric to calculate the difference between the predicted and ground truth uv values
+    :return: weighted mean loss
+    """
     assert loss_fn.reduction == 'none', 'loss_fn must have reduction set to none'
     assert not uv.isnan().all(), 'uv must contain some valid values'
 
@@ -137,7 +154,7 @@ def total_variation(uv: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
     return tv
 
-
+# used for monitoring the training process
 @torch.no_grad()
 def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
     return balanced_normalized_uv_loss(uv_hat, uv, torch.nn.L1Loss(reduction='none'))
