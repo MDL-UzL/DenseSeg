@@ -11,7 +11,7 @@ from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
 from clearml_ids import model_ids
 
-uv_method = 'polar'
+uv_method = 'cartesian'
 print(f'Evaluating model with uv method {uv_method}')
 ds = JSRTDatasetUV('test', uv_method)
 cl_model = InputModel(model_ids[uv_method])
