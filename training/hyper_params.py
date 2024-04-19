@@ -11,11 +11,14 @@ hp_parser.add_argument('--reg_uv', type=float, default=0.6667, help='weight for 
 hp_parser.add_argument('--uv_loss', choices=['l1', 'l2', 'smoothl1'], default='l1',
                        help='loss function used for uv map regression')
 hp_parser.add_argument('--tv', type=float, default=0.2, help='weight for total variation loss')
+hp_parser.add_argument('--uv_method', choices=['cartesian', 'polar'], default='cartesian',
+                       help='method how the uv maps were created as ground truth')
 hp_parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
 hp_parser.add_argument('--batch_size', type=int, default=8)
 hp_parser.add_argument('--infer_batch_size', type=int, default=8, help='batch size during validation and testing')
 hp_parser.add_argument('--epochs', type=int, default=100, help='number of epochs for training')
-hp_parser.add_argument('--lr_scheduler', action=argparse.BooleanOptionalAction, default=True, help='use learning rate scheduler')
+hp_parser.add_argument('--lr_scheduler', action=argparse.BooleanOptionalAction, default=True,
+                       help='use learning rate scheduler')
 hp_parser.add_argument('--beta', type=float, default=0.8, help='beta for smooth l1 loss')
 
 # random affine augmentation

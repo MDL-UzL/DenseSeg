@@ -9,9 +9,12 @@ from tqdm import tqdm
 from dataset.jsrt_dataset import JSRTDatasetUV
 from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
+from clearml_ids import model_ids
 
-ds = JSRTDatasetUV('test')
-cl_model = InputModel('3f1ab0e33c7d4d2397652acfc0dab220')
+uv_method = 'cartesian'
+print(f'Evaluating model with uv method {uv_method}')
+ds = JSRTDatasetUV('test', uv_method)
+cl_model = InputModel(model_ids[uv_method])
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 dsc_metric = DiceMetric(include_background=True, reduction='none', num_classes=ds.N_CLASSES)
@@ -20,6 +23,7 @@ df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
 with torch.inference_mode():
     for img, lm, dist_map, seg_mask, uv_map in tqdm(ds, desc='Evaluating', unit='img'):
         seg_hat, uv_hat = model.predict(img.unsqueeze(0), mask_uv=True)
+        # seg_hat, uv_hat = seg_mask.unsqueeze(0), uv_map.unsqueeze(0)
 
         # DICE
         dsc_value = dsc_metric(seg_hat, seg_mask.unsqueeze(0)).squeeze(0)

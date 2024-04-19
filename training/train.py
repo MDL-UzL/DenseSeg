@@ -27,6 +27,8 @@ elif hp.reg_uv:
     tags = [hp.uv_loss, 'TV' if hp.tv else '']
 else:
     raise ValueError('At least one of seg or uv must be True')
+tags.append(hp.uv_method)
+
 use_data_aug = hp.rotate or hp.translate or hp.scale
 if use_data_aug:
     tags.append('DataAug')
@@ -42,8 +44,9 @@ device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu
 
 # define data loaders
 dl_kwargs = {'num_workers': 4, 'pin_memory': True} if torch.cuda.is_available() else {}
-train_dl = DataLoader(JSRTDatasetUV('train'), batch_size=hp.batch_size, drop_last=True, **dl_kwargs)
-val_dl = DataLoader(JSRTDatasetUV('test'), batch_size=hp.infer_batch_size, shuffle=False, drop_last=False, **dl_kwargs)
+train_dl = DataLoader(JSRTDatasetUV('train', hp.uv_method), batch_size=hp.batch_size, drop_last=True, **dl_kwargs)
+val_dl = DataLoader(JSRTDatasetUV('test', hp.uv_method), batch_size=hp.infer_batch_size, shuffle=False, drop_last=False,
+                    **dl_kwargs)
 
 # define model
 n_classes = train_dl.dataset.N_CLASSES
