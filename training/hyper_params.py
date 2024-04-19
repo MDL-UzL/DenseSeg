@@ -7,6 +7,8 @@ hp_parser.add_argument('--seed', type=int, default=42, help='seed for reproducib
 
 # hyperparameters
 hp_parser.add_argument('--bce', type=float, default=0.1333, help='weight for segmentation loss')
+hp_parser.add_argument('--supervision', choices=['sparse', 'dense'], default='dense',
+                          help='type of supervision for uv map regression. Dense: all pixels, Sparse: landmarks only')
 hp_parser.add_argument('--reg_uv', type=float, default=0.6667, help='weight for uv map regression loss')
 hp_parser.add_argument('--uv_loss', choices=['l1', 'l2', 'smoothl1'], default='l1',
                        help='loss function used for uv map regression')

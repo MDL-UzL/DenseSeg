@@ -28,6 +28,7 @@ elif hp.reg_uv:
 else:
     raise ValueError('At least one of seg or uv must be True')
 tags.append(hp.uv_method)
+tags.append(hp.supervision)
 
 use_data_aug = hp.rotate or hp.translate or hp.scale
 if use_data_aug:
@@ -76,7 +77,7 @@ else:
 
 fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'lambdas': [hp.bce, hp.reg_uv, hp.tv],
               'lm_uv_values': lm_uv_values, 'uv_loss_fn': uv_loss_fn, 'data_aug': data_aug,
-              'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
+              'supervision': hp.supervision, 'bce_pos_weight': train_dl.dataset.BCE_POS_WEIGHTS.to(device)}
 
 for epoch in trange(hp.epochs, desc='training'):
     forward('train', train_dl, epoch, **fwd_kwargs)

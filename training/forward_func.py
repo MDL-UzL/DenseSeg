@@ -164,7 +164,7 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             # can be provided via kwargs dict
             lambdas: list,  # [lambda_dsc, lambda_uv, lambda_tv]
             model: UVUNet, optimizer: Optimizer, device: torch.device, lm_uv_values: List[torch.Tensor],
-            bce_pos_weight: torch.Tensor, uv_loss_fn, data_aug: AugmentationSequential = None) -> (
+            supervision: str, bce_pos_weight: torch.Tensor, uv_loss_fn, data_aug: AugmentationSequential = None) -> (
         torch.Tensor, torch.Tensor):
     assert any(lambdas), 'At least one weighting for loss must be non-zero'
     # set model mode according to mode
@@ -200,7 +200,10 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
             lm_loss = landmark_uv_loss(uv_hat, lm, lm_uv_values, uv_loss_fn).mean() if lambda_reg_uv else 0
             tv_loss = total_variation(uv_hat, seg.bool()).mean() if lambda_tv else 0
 
-            uv_loss = lambda_reg_uv * (reg_loss + lm_loss) / 2 + lambda_tv * tv_loss
+            if supervision == 'dense':
+                uv_loss = lambda_reg_uv * (reg_loss + lm_loss) / 2 + lambda_tv * tv_loss
+            elif supervision == 'sparse':
+                uv_loss = lambda_reg_uv * lm_loss + lambda_tv * tv_loss
             loss = lambda_bce * bce_loss + uv_loss
 
         if model.training:  # backward

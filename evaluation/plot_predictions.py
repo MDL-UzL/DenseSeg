@@ -13,8 +13,8 @@ from utils import convert_uv_to_coordinates
 save_plt = False
 save_path = Path('/home/ron/Desktop')
 
-ds = JSRTDatasetUV('test')
-cl_model = InputModel('3f1ab0e33c7d4d2397652acfc0dab220')
+ds = JSRTDatasetUV('test', uv_mode='tba')
+cl_model = InputModel('fe2d3124bccb49249c52ffb66ab24541')
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 rnd_idx = randint(0, len(ds) - 1)
