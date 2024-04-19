@@ -81,9 +81,11 @@ TRAINING_SHAPES = JSRTDataset.get_training_shapes()
 
 
 class JSRTDatasetUV(JSRTDataset):
-    def __init__(self, mode: str):
+    def __init__(self, mode: str, uv_mode: str):
+        assert uv_mode in ['cartesian', 'polar'], f'Unknown uv_mode {uv_mode}. Please choose either cartesian or polar.'
         super().__init__(mode, normalize_landmarks=False)
-        self.uv_maps = torch.load('dataset/data/uv_maps.pth')
+        self.uv_maps = torch.load(f'dataset/data/uv_maps_{uv_mode}.pth')
+        self.uv_values = torch.load(f'dataset/data/mean_shape_uv_values_{uv_mode}.pth')
 
         # select for training or testing
         if mode == 'train':
@@ -101,12 +103,10 @@ class JSRTDatasetUV(JSRTDataset):
 
         return img, target_lm, dist_map, seg_mask, uv_map
 
-    @classmethod
-    def get_anatomical_structure_uv_values(cls) -> OrderedDict:
-        uv_values = torch.load('dataset/data/mean_shape_uv_values.pth')
+    def get_anatomical_structure_uv_values(self) -> OrderedDict:
         name_uv_dict = OrderedDict()
-        for organ in cls.NUM_LANDMARKS.keys():
-            name_uv_dict[organ] = uv_values[organ]
+        for organ in self.NUM_LANDMARKS.keys():
+            name_uv_dict[organ] = self.uv_values[organ]
 
         return name_uv_dict
 

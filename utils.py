@@ -189,6 +189,81 @@ def extract_warped_uv_maps(mean_shape: torch.Tensor, landmarks: torch.Tensor, se
     return uv_maps, atlas_uv_values
 
 
+def extract_polar_uv_maps(mean_shape: torch.Tensor, landmarks: torch.Tensor, segmentation: torch.Tensor) -> tuple:
+    """
+    Generate UV maps similar to the other approach but with more sample points inside the abject.
+    The returned UV maps are masked, but could still contain NaN values. All landmarks must be given in pixel coordinates.
+    :param mean_shape: mean shape of the object of shape (L, 2)
+    :param landmarks: landmarks of the objects of shape (N, L, 2)
+    :param segmentation: segmentation masks of the objects of shape (N, H, W)
+    :return: warped UV maps of the objects of shape (N, 2, H, W), mean shape's UV values of shape (L, 2)
+    """
+
+    N, L, _ = landmarks.shape
+    _, H, W = segmentation.shape
+    assert mean_shape.shape[-1] == landmarks.shape[-1] == 2, 'Landmarks must be 2D'
+    assert mean_shape.shape[0] == L, 'Number of landmarks must match the mean shape'
+    assert segmentation.shape[0] == N, 'Number of samples must match the segmentation'
+    assert (mean_shape[:, 0].min() >= 0 and mean_shape[:, 0].max() <= W and
+            mean_shape[:, 1].min() >= 0 and mean_shape[:, 1].max() <= H), 'Mean shape must be within the image bounds'
+    assert (landmarks[:, :, 0].min() >= 0 and landmarks[:, :, 0].max() <= W and
+            landmarks[:, :, 1].min() >= 0 and landmarks[:, :,
+                                              1].max() <= H), 'Landmarks must be within the image bounds'
+
+    uv_maps = torch.empty((N, 2, H, W), dtype=torch.float32)
+    atlas = mean_shape
+    # extract atlas's uv values
+    # centering and normalizing
+    atlas_uv_values = atlas - atlas.mean(dim=0, keepdim=True)
+    atlas_uv_values = atlas_uv_values / atlas_uv_values.abs().max(-1, keepdim=True).values
+
+    # flip to make vu → uv
+    atlas_uv_values = atlas_uv_values.flip(-1)
+
+    for n, (sample, seg_mask) in enumerate(tqdm(zip(landmarks, segmentation), total=N, desc='Generating UV maps')):
+        # bounding box
+        bb_min = torch.min(sample, dim=0).values
+        bb_max = torch.max(sample, dim=0).values
+        range_sample = bb_max - bb_min
+        range_sample_int = range_sample.round().int()
+
+        pts = sample.clone()
+        center_of_pts = pts.mean(0)
+        pts_centered = pts - center_of_pts
+
+        O = round(range_sample.max().item() / 2)
+        offset = torch.linspace(1 / O, 1, O)
+        pts = pts_centered.unsqueeze(0) * offset.view(O, 1, 1) + center_of_pts.unsqueeze(0)
+        pts = pts.view(-1, 2)
+        values = atlas_uv_values.unsqueeze(0) * offset.view(O, 1, 1)
+        values = values.view(-1, 2)
+
+        grid = torch.meshgrid(torch.linspace(bb_min[0], bb_max[0], range_sample_int[0]),
+                              torch.linspace(bb_min[1], bb_max[1], range_sample_int[1]), indexing='ij')
+        grid = torch.stack(grid, dim=-1).reshape(-1, 2)
+
+        uv_img = griddata(pts, values, grid, method='linear', rescale=True)
+        uv_img = torch.from_numpy(uv_img)
+        uv_img = uv_img.reshape(range_sample_int[0], range_sample_int[1], 2).permute(2, 0, 1)
+
+        # mask the uv map to the object boundaries utilizing the segmentation mask
+        img_size = seg_mask.shape[::-1]
+        bb_max_int = bb_max.round().int()
+        bb_min_int = bb_min.round().int()
+        target_uv_img_shape = (bb_max_int - bb_min_int).tolist()
+        resized_uv_img = F.interpolate(uv_img.unsqueeze(0), target_uv_img_shape, mode='bilinear', align_corners=True).squeeze(0)
+
+        uv_img_space = torch.full((2, img_size[0], img_size[1]), torch.nan)
+        uv_img_space[:, bb_min_int[0]:bb_max_int[0], bb_min_int[1]:bb_max_int[1]] = resized_uv_img
+        uv_img_space_masked = uv_img_space.clone().transpose(1, 2)
+        uv_img_space_masked[:, seg_mask.logical_not()] = torch.nan
+
+        # save the uv map
+        uv_maps[n] = uv_img_space_masked
+
+    return uv_maps, atlas_uv_values
+
+
 def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mode: str, k: int = None) -> torch.Tensor:
     """
     Calculate the coordinates of the uv_values in the uv_map by finding the closest uv value in the uv_map.
@@ -266,7 +341,6 @@ def nanargmin(tensor, dim=None, keepdim=False):
     max_value = torch.finfo(tensor.dtype).max
     output = tensor.nan_to_num(max_value).argmin(dim=dim, keepdim=keepdim)
     return output
-
 
 
 if __name__ == '__main__':
