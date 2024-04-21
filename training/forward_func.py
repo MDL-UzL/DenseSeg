@@ -9,9 +9,11 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from models.uv_unet import UVUNet
-from utils import convert_list_of_uv_to_coordinates
+from models.kpts_unet import KeypointUNet
+from utils import convert_list_of_uv_to_coordinates, extract_kpts_from_heatmap
 from kornia.augmentation import AugmentationSequential
 from kornia.geometry.conversions import normalize_pixel_coordinates
+from dataset.jsrt_dataset import JSRTDataset
 
 
 # torch.autograd.set_detect_anomaly(True)
@@ -154,6 +156,7 @@ def total_variation(uv: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
     return tv
 
+
 # used for monitoring the training process
 @torch.no_grad()
 def uv_l1_loss(uv_hat: torch.Tensor, uv: torch.Tensor) -> torch.Tensor:
@@ -242,3 +245,63 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
         if lambda_reg_uv:
             log.report_scalar('Regression UV Loss', mode, iteration=epoch, value=loss_avg[3].item())
             log.report_scalar('Landmark UV Loss', mode, iteration=epoch, value=loss_avg[4].item())
+
+
+def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
+                    # can be provided via kwargs dict
+                    model: KeypointUNet, optimizer: Optimizer, device: torch.device, std_pixel: int,
+                    data_aug: AugmentationSequential = None) -> (torch.Tensor, torch.Tensor):
+    # set model mode according to mode
+    if mode == 'train':
+        model.train()
+    elif mode in ['test', 'val']:
+        model.eval()
+    else:
+        raise ValueError(f'Unknown mode: {mode}')
+
+    loss_collector = metrics.CumulativeAverage()
+    tre_collector = metrics.CumulativeAverage()
+
+    for img, lm, _, _ in data_loader:
+        img = img.to(device, non_blocking=True)
+        lm = lm.to(device, non_blocking=True)  # (B, N, 2)
+
+        if data_aug and model.training:
+            img, lm = data_aug(img, lm)
+
+        # create ground truth heatmap
+        B, _, H, W = img.shape
+        N = lm.shape[1]
+        grid = torch.stack(torch.meshgrid(torch.arange(H, device=device),
+                                          torch.arange(W, device=device), indexing='xy'), dim=-1)
+        grid = grid.view(1, H * W, 2)
+        gaussian = grid.unsqueeze(1) - lm.unsqueeze(2)  # (B, N, H*W, 2)
+        gaussian = 20 * torch.exp(-torch.sum(gaussian.pow(2), dim=-1) / (2 * std_pixel ** 2))  # (B, N, H*W)
+        heatmap = gaussian.view(B, N, H, W)
+
+        with torch.set_grad_enabled(model.training):  # forward
+            heatmap_hat = model(img)
+            loss = F.mse_loss(heatmap_hat, heatmap)
+
+        if model.training:  # backward
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+
+        # track metrics
+        lm_hat = extract_kpts_from_heatmap(heatmap_hat.detach())
+        tre = torch.linalg.vector_norm(lm - lm_hat, ord=2, dim=-1) * JSRTDataset.PIXEL_RESOLUTION_MM
+        tre_organ = []
+        for (start_idx, end_idx) in data_loader.dataset.get_anatomical_structure_index().values():
+            tre_organ.append(tre[:, start_idx:end_idx].mean())
+
+        tre_collector.append(tre_organ, count=B)
+        loss_collector.append([loss, tre.mean()], count=B)
+
+    # log metrics scalars
+    log = Logger.current_logger()
+    loss_avg = loss_collector.aggregate()  # [loss, bce, uv, reg, lm]
+    log.report_scalar('Loss', mode, iteration=epoch, value=loss_avg[0].item())
+    log.report_scalar('TRE [mm]', mode, iteration=epoch, value=loss_avg[1].item())
+    log.report_histogram('TRE [mm]', mode, iteration=epoch, values=tre_collector.aggregate(),
+                         xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='TRE [mm]')

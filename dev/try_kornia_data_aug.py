@@ -4,7 +4,7 @@ from kornia.constants import DataKey, SamplePadding, Resample
 from matplotlib import pyplot as plt
 from kornia.geometry.transform import warp_affine, Affine
 
-ds = JSRTDatasetUV('train')
+ds = JSRTDatasetUV('train', 'cartesian')
 img, lm, _, seg_mask, uv_map = ds[0]
 
 aug = AugmentationSequential(

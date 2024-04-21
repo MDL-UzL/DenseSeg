@@ -318,6 +318,12 @@ def convert_uv_to_coordinates(uv_map: torch.Tensor, uv_values: torch.Tensor, mod
     return uv_coord
 
 
+def nanargmin(tensor, dim=None, keepdim=False):
+    max_value = torch.finfo(tensor.dtype).max
+    output = tensor.nan_to_num(max_value).argmin(dim=dim, keepdim=keepdim)
+    return output
+
+
 def convert_list_of_uv_to_coordinates(uv_map: torch.Tensor, uv_values: list, mode: str, k: int = None) -> list:
     """
     Calculate the coordinates of the uv_values in the uv_map by finding the closest uv value in the uv_map for each class C.
@@ -336,12 +342,18 @@ def convert_list_of_uv_to_coordinates(uv_map: torch.Tensor, uv_values: list, mod
 
     return coord_list
 
-
-def nanargmin(tensor, dim=None, keepdim=False):
-    max_value = torch.finfo(tensor.dtype).max
-    output = tensor.nan_to_num(max_value).argmin(dim=dim, keepdim=keepdim)
-    return output
-
+def extract_kpts_from_heatmap(heatmap:torch.Tensor) -> torch.Tensor:
+    """
+    Extract the coordinates of the keypoints from the heatmap.
+    :param heatmap: heatmap of shape (B, N, H, W)
+    :return: coordinates of the keypoints of shape (B, N, 2)
+    """
+    B, N, H, W = heatmap.shape
+    heatmap = heatmap.view(B, N, -1)
+    kpts = torch.argmax(heatmap, dim=-1)
+    kpts = torch.stack([kpts // W, kpts % W], dim=-1)
+    kpts = kpts.flip(-1)
+    return kpts
 
 if __name__ == '__main__':
     from dataset import JSRTDataset, TRAINING_SHAPES
