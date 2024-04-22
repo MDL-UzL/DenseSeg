@@ -249,7 +249,7 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
 
 def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
                     # can be provided via kwargs dict
-                    model: KeypointUNet, optimizer: Optimizer, device: torch.device, std_pixel: int,
+                    model: KeypointUNet, optimizer: Optimizer, device: torch.device, std_pixel: int, alpha: int,
                     data_aug: AugmentationSequential = None) -> (torch.Tensor, torch.Tensor):
     # set model mode according to mode
     if mode == 'train':
@@ -276,7 +276,7 @@ def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to b
                                           torch.arange(W, device=device), indexing='xy'), dim=-1)
         grid = grid.view(1, H * W, 2)
         gaussian = grid.unsqueeze(1) - lm.unsqueeze(2)  # (B, N, H*W, 2)
-        gaussian = 20 * torch.exp(-torch.sum(gaussian.pow(2), dim=-1) / (2 * std_pixel ** 2))  # (B, N, H*W)
+        gaussian = alpha * torch.exp(-torch.sum(gaussian.pow(2), dim=-1) / (2 * std_pixel ** 2))  # (B, N, H*W)
         heatmap = gaussian.view(B, N, H, W)
 
         with torch.set_grad_enabled(model.training):  # forward

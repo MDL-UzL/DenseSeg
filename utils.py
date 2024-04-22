@@ -355,6 +355,8 @@ def extract_kpts_from_heatmap(heatmap:torch.Tensor) -> torch.Tensor:
     kpts = kpts.flip(-1)
     return kpts
 
+
+
 if __name__ == '__main__':
     from dataset import JSRTDataset, TRAINING_SHAPES
 

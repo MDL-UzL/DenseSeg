@@ -12,7 +12,8 @@ from training.forward_func import forward_heatmap
 from training.hyper_params import hp_parser
 from kornia.augmentation import AugmentationSequential, RandomAffine
 
-hp_parser.add_argument('--std', type=int, default=5, help='standard deviation in pixel for heatmap generation')
+hp_parser.add_argument('--std', type=int, default=8, help='standard deviation of gaussian function in pixel for heatmap generation')
+hp_parser.add_argument('--alpha', type=int, default=44, help='alpha to boost gaussian function for heatmap generation')
 hp = hp_parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -55,7 +56,8 @@ if use_data_aug:
 else:
     data_aug = None
 
-fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'data_aug': data_aug, 'std_pixel': hp.std}
+fwd_kwargs = {'model': model, 'optimizer': optimizer, 'device': device, 'data_aug': data_aug, 'std_pixel': hp.std,
+              'alpha': hp.alpha}
 
 for epoch in trange(hp.epochs, desc='training'):
     forward_heatmap('train', train_dl, epoch, **fwd_kwargs)

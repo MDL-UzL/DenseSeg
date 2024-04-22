@@ -11,9 +11,9 @@ from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
 from clearml_ids import model_ids
 
-uv_method = 'cartesian'
+uv_method = 'cartesian_sparse'
 print(f'Evaluating model with uv method {uv_method}')
-ds = JSRTDatasetUV('test', uv_method)
+ds = JSRTDatasetUV('test', uv_method.split('_')[0])
 cl_model = InputModel(model_ids[uv_method])
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
@@ -44,7 +44,7 @@ with torch.inference_mode():
 
         for anat_idx, (anatomy, (start_idx, end_idx)) in enumerate(ds.get_anatomical_structure_index().items()):
             df = pd.concat([df, pd.DataFrame(
-                {'anatomy': anatomy, 'metric': 'dice', 'value': dsc_value[anat_idx].item()}
+                {'anatomy': anatomy, 'metric': 'dice', 'value': dsc_value[anat_idx].item() * 100}
                 , index=[0])], ignore_index=True)
 
             df = pd.concat([df, pd.DataFrame(
@@ -70,6 +70,11 @@ df_result = df_mean.merge(df_std, on=['anatomy', 'metric'], suffixes=('_mean', '
 df_avg = df_result.drop('anatomy', axis=1).groupby('metric').mean().reset_index()
 df_avg['anatomy'] = 'average'
 df_result = pd.concat([df_result, df_avg], ignore_index=True)
+
+df_result['Method'] = uv_method
+
+# save to csv
+df_result.to_csv(f'evaluation/csv_files/uv_{uv_method}.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])

@@ -2,6 +2,7 @@ import pandas as pd
 import torch
 from clearml import InputModel
 from kornia.geometry import normalize_pixel_coordinates
+from skimage.draw import polygon2mask
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -17,7 +18,7 @@ model = KeypointUNet.load(cl_model.get_weights(), 'cpu').eval()
 df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
 
 with torch.inference_mode():
-    for img, lm, dist_map, _ in tqdm(ds, desc='Evaluating', unit='img'):
+    for img, lm, dist_map, seg in tqdm(ds, desc='Evaluating', unit='img'):
         heatmap_hat = model(img.unsqueeze(0))
         lm_hat = extract_kpts_from_heatmap(heatmap_hat).squeeze(0)
         heatmap_hat = heatmap_hat.squeeze(0)
@@ -43,6 +44,16 @@ with torch.inference_mode():
                  'value': avg_surf_dist[anat_idx, start_idx:end_idx].mean().item()}
                 , index=[0])], ignore_index=True)
 
+            # DICE
+            seg_hat = polygon2mask((H, W), lm_hat[start_idx:end_idx].flip(-1))
+            seg_hat = torch.from_numpy(seg_hat)
+            intersection = (seg_hat & seg[anat_idx].bool()).sum()
+            set_power = seg_hat.sum() + seg[anat_idx].sum()
+            dsc = 2 * intersection / (set_power + 1e-6)
+
+            df = pd.concat([df, pd.DataFrame(
+                {'anatomy': anatomy, 'metric': 'dice', 'value': dsc.item() * 100}, index=[0])], ignore_index=True)
+
 # rename anatomy
 df['anatomy'] = df['anatomy'].replace({'left_lung': 'lungs', 'right_lung': 'lungs',
                                        'heart': 'heart', 'left_clavicle': 'clavicles', 'right_clavicle': 'clavicles'})
@@ -56,6 +67,13 @@ df_result = df_mean.merge(df_std, on=['anatomy', 'metric'], suffixes=('_mean', '
 df_avg = df_result.drop('anatomy', axis=1).groupby('metric').mean().reset_index()
 df_avg['anatomy'] = 'average'
 df_result = pd.concat([df_result, df_avg], ignore_index=True)
+
+# add Method column
+df_result['Method'] = 'Heatmap Regression'
+
+# save to csv
+df_result.to_csv('evaluation/csv_files/heatmap_regression.csv', index=False)
+
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])
