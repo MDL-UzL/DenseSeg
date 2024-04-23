@@ -185,10 +185,10 @@ def forward(mode: str, data_loader: DataLoader, epoch: int,  # have to be given 
     tv = metrics.LossMetric(total_variation, reduction='mean_batch')
     loss_collector = metrics.CumulativeAverage()
 
-    for img, lm, _, seg_mask, uv_map in data_loader:
+    for img, lm, _, seg, uv_map in data_loader:
         img = img.to(device, non_blocking=True)
         lm = lm.to(device, non_blocking=True)
-        seg = seg_mask.to(device, non_blocking=True)
+        seg = seg.to(device, non_blocking=True)
         uv = uv_map.to(device, non_blocking=True)
 
         if data_aug and model.training:
