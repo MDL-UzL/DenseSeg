@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import h5py
 import pandas as pd
 import torch
@@ -31,6 +33,7 @@ class GrazPedWriDataset(Dataset):
                                     52.5956, 11.2623, 17.9409])
     BCE_POS_WEIGHTS = BCE_POS_WEIGHTS.view(N_CLASSES, 1, 1).expand(N_CLASSES, 384, 224)
     CLASS_LABEL = BONE_LABEL
+    PIXEL_RESOLUTION_MM = 1  # dummy value
 
     def __init__(self, mode: str):
         super().__init__()
@@ -38,6 +41,7 @@ class GrazPedWriDataset(Dataset):
         # load data meta and other information
         self.storage = h5py.File('dataset/data/graz/graz_img_seg_lms.h5', 'r')
         assert self.storage.attrs['BONE_LABEL'].tolist() == self.BONE_LABEL, 'Loaded labels do not match'
+        self.num_lms = self.storage.attrs['NUM_LMS']
         self.uv_maps = torch.load('dataset/data/graz/uv_maps_polar.pth')
         self.uv_values = torch.load('dataset/data/graz/mean_shape_uv_values_polar.pth')
         self.df_meta = pd.read_csv('dataset/data/graz/dataset_with_cv_split.csv', index_col='filestem')
@@ -64,10 +68,24 @@ class GrazPedWriDataset(Dataset):
         lms = torch.from_numpy(ds['lms'][:])
         uv_map = self.uv_maps[file_name]
 
-        return img, lms, -1, seg, uv_map  # -1 placeholder for dist_map
+        return img, lms, torch.full_like(seg, torch.nan), seg, uv_map  # -1 placeholder for dist_map
 
     def get_anatomical_structure_uv_values(self):
         return self.uv_values
+
+    def get_anatomical_structure_index(self) -> OrderedDict:
+        name_idx_dict = OrderedDict()
+        idx = 0
+        for organ, num_lms in zip(self.BONE_LABEL, self.num_lms):
+            name_idx_dict[organ] = (idx, idx + num_lms)
+            idx += num_lms
+
+        return name_idx_dict
+
+    # dummy to match API of JSRTDataset
+    @property
+    def NUM_LANDMARKS(self):
+        return {k: v for k, v in zip(self.BONE_LABEL, self.num_lms)}
 
 
 if __name__ == '__main__':

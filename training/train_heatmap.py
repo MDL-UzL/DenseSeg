@@ -7,12 +7,16 @@ from torch.utils.data import DataLoader
 from tqdm import trange
 
 from dataset.jsrt_dataset import JSRTDataset
+from dataset.grazer_dataset import GrazPedWriDataset
 from models.kpts_unet import KeypointUNet
 from training.forward_func import forward_heatmap
 from training.hyper_params import hp_parser
 from kornia.augmentation import AugmentationSequential, RandomAffine
 
-hp_parser.add_argument('--std', type=int, default=8, help='standard deviation of gaussian function in pixel for heatmap generation')
+dataset_to_use = ['GRAZ', 'JSRT'][0]
+
+hp_parser.add_argument('--std', type=int, default=8,
+                       help='standard deviation of gaussian function in pixel for heatmap generation')
 hp_parser.add_argument('--alpha', type=int, default=44, help='alpha to boost gaussian function for heatmap generation')
 hp = hp_parser.parse_args()
 
@@ -23,8 +27,8 @@ use_data_aug = hp.rotate or hp.translate or hp.scale
 if use_data_aug:
     tags.append('DataAug')
 
-task = Task.init(project_name='DenseSeg', task_name='Heatmap Regression', tags=tags, auto_connect_frameworks=False,
-                 auto_resource_monitoring=False,
+task = Task.init(project_name='DenseSeg', task_name=f'{dataset_to_use}: Heatmap Regression', tags=tags,
+                 auto_connect_frameworks=False, auto_resource_monitoring=False,
                  auto_connect_arg_parser={'gpu_id': False, 'bce': False, 'supervision': False, 'reg_uv': False,
                                           'uv_loss': False, 'tv': False, 'uv_method': False})
 # init pytorch
@@ -35,10 +39,16 @@ if hp.gpu_id is None and torch.cuda.is_available():  # workaround to enable GPU 
 device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu')
 
 # define data loaders
+if dataset_to_use == 'GRAZ':
+    ds = lambda split: GrazPedWriDataset(split)
+elif dataset_to_use == 'JSRT':
+    ds = lambda split: JSRTDataset(split, False)
+else:
+    raise ValueError(f'Unknown dataset {dataset_to_use}')
+
 dl_kwargs = {'num_workers': 4, 'pin_memory': True} if torch.cuda.is_available() else {}
-train_dl = DataLoader(JSRTDataset('train', False), batch_size=hp.batch_size, drop_last=True, **dl_kwargs)
-val_dl = DataLoader(JSRTDataset('test', False), batch_size=hp.infer_batch_size, shuffle=False, drop_last=False,
-                    **dl_kwargs)
+train_dl = DataLoader(ds('train'), batch_size=hp.batch_size, drop_last=True, **dl_kwargs)
+val_dl = DataLoader(ds('test'), batch_size=hp.infer_batch_size, shuffle=False, drop_last=False, **dl_kwargs)
 
 # define model
 n_kpts = sum(train_dl.dataset.NUM_LANDMARKS.values())

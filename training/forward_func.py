@@ -262,7 +262,8 @@ def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to b
     loss_collector = metrics.CumulativeAverage()
     tre_collector = metrics.CumulativeAverage()
 
-    for img, lm, _, _ in data_loader:
+    for batch in data_loader:
+        img, lm = batch[:2]
         img = img.to(device, non_blocking=True)
         lm = lm.to(device, non_blocking=True)  # (B, N, 2)
 

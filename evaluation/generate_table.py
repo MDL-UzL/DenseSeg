@@ -1,7 +1,9 @@
 import pandas as pd
 from pathlib import Path
 
-csv_path = Path('evaluation/csv_files')
+ds_to_eval = ['grazer', 'jsrt'][0]
+print(f'Evaluating {ds_to_eval} dataset')
+csv_path = Path(f'evaluation/csv_files/{ds_to_eval}')
 # concatenate csv files
 df = pd.concat([pd.read_csv(f) for f in csv_path.glob('*.csv')], ignore_index=True)
 
@@ -16,11 +18,11 @@ df = df.pivot_table(index=['anatomy', 'metric'], columns='Method', values='value
 
 # reorder
 # Define the order of the categories
-anatomy_order = ['lungs', 'heart', 'clavicles', 'average']
+#anatomy_order = ['lungs', 'heart', 'clavicles', 'average']
 metric_order = ['DSC', 'ASD', 'TRE']
 
 # Convert the 'anatomy' and 'metric' columns to categorical
-df['anatomy'] = pd.Categorical(df['anatomy'], categories=anatomy_order, ordered=True)
+#df['anatomy'] = pd.Categorical(df['anatomy'], categories=anatomy_order, ordered=True)
 df['metric'] = pd.Categorical(df['metric'], categories=metric_order, ordered=True)
 
 # Sort the DataFrame by 'anatomy' and 'metric'
@@ -32,6 +34,6 @@ df = df.reset_index(drop=True)
 df = df.set_index(['anatomy', 'metric'])
 
 # reorder columns
-df = df[['ShapeFormer', 'Heatmap Regression', 'cartesian', 'cartesian_sparse', 'polar', 'nnUNet']]
+#df = df[['ShapeFormer', 'Heatmap Regression', 'cartesian', 'cartesian_sparse', 'polar', 'nnUNet']]
 
 print(df)

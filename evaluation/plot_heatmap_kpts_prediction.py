@@ -7,10 +7,10 @@ from matplotlib import pyplot as plt
 from dataset.jsrt_dataset import JSRTDataset
 from models.kpts_unet import KeypointUNet
 from utils import extract_kpts_from_heatmap
-from clearml_ids import model_ids
+from clearml_ids import jsrt_model_ids
 
 ds = JSRTDataset('test', False)
-cl_model = InputModel(model_ids['heatmap'])
+cl_model = InputModel(jsrt_model_ids['heatmap'])
 model = KeypointUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 rnd_idx = randint(0, len(ds) - 1)

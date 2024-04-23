@@ -6,22 +6,30 @@ from monai.metrics import DiceMetric
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from dataset.jsrt_dataset import JSRTDatasetUV
+from dataset.grazer_dataset import GrazPedWriDataset
 from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
-from clearml_ids import model_ids
+from clearml_ids import grazer_model_ids
 
-uv_method = 'cartesian_sparse'
-print(f'Evaluating model with uv method {uv_method}')
-ds = JSRTDatasetUV('test', uv_method.split('_')[0])
-cl_model = InputModel(model_ids[uv_method])
-model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
+device = 'cuda:4' if torch.cuda.is_available() else 'cpu'
+
+ds = GrazPedWriDataset('test')
+cl_model = InputModel(grazer_model_ids['uv'])
+model = UVUNet.load(cl_model.get_weights(), 'cpu').eval().to(device)
 
 dsc_metric = DiceMetric(include_background=True, reduction='none', num_classes=ds.N_CLASSES)
 df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
 
+uv_values = list(ds.get_anatomical_structure_uv_values().values())
+uv_values = [v.to(device, non_blocking=True) for v in uv_values]
 with torch.inference_mode():
     for img, lm, dist_map, seg_mask, uv_map in tqdm(ds, desc='Evaluating', unit='img'):
+        img = img.to(device, non_blocking=True)
+        lm = lm.to(device, non_blocking=True)
+        dist_map = dist_map.to(device, non_blocking=True)
+        seg_mask = seg_mask.to(device, non_blocking=True)
+        uv_map = uv_map.to(device, non_blocking=True)
+
         seg_hat, uv_hat = model.predict(img.unsqueeze(0), mask_uv=True)
         # seg_hat, uv_hat = seg_mask.unsqueeze(0), uv_map.unsqueeze(0)
 
@@ -29,7 +37,6 @@ with torch.inference_mode():
         dsc_value = dsc_metric(seg_hat, seg_mask.unsqueeze(0)).squeeze(0)
 
         # TRE
-        uv_values = list(ds.get_anatomical_structure_uv_values().values())
         lm_hat = convert_list_of_uv_to_coordinates(uv_hat, uv_values, 'linear', k=5)
         lm_hat = torch.cat(lm_hat, dim=1).squeeze(0)
         tre = torch.linalg.vector_norm(lm - lm_hat, dim=1, ord=2)
@@ -56,10 +63,7 @@ with torch.inference_mode():
                  'value': avg_surf_dist[anat_idx, start_idx:end_idx].mean().item()}
                 , index=[0])], ignore_index=True)
 
-        #break
-# rename anatomy
-df['anatomy'] = df['anatomy'].replace({'left_lung': 'lungs', 'right_lung': 'lungs',
-                                       'heart': 'heart', 'left_clavicle': 'clavicles', 'right_clavicle': 'clavicles'})
+        # break
 
 # calculate statistics
 df_mean = df.groupby(['anatomy', 'metric']).mean().reset_index()
@@ -71,10 +75,10 @@ df_avg = df_result.drop('anatomy', axis=1).groupby('metric').mean().reset_index(
 df_avg['anatomy'] = 'average'
 df_result = pd.concat([df_result, df_avg], ignore_index=True)
 
-df_result['Method'] = uv_method
+df_result['Method'] = 'uv'
 
 # save to csv
-df_result.to_csv(f'evaluation/csv_files/uv_{uv_method}.csv', index=False)
+df_result.to_csv(f'evaluation/csv_files/grazer/uv.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])

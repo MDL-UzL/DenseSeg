@@ -6,13 +6,13 @@ from skimage.draw import polygon2mask
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from clearml_ids import model_ids
+from clearml_ids import jsrt_model_ids
 from dataset.jsrt_dataset import JSRTDataset
 from models.kpts_unet import KeypointUNet
 from utils import extract_kpts_from_heatmap
 
 ds = JSRTDataset('test', False)
-cl_model = InputModel(model_ids['heatmap'])
+cl_model = InputModel(jsrt_model_ids['heatmap'])
 model = KeypointUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
@@ -72,7 +72,7 @@ df_result = pd.concat([df_result, df_avg], ignore_index=True)
 df_result['Method'] = 'Heatmap Regression'
 
 # save to csv
-df_result.to_csv('evaluation/csv_files/heatmap_regression.csv', index=False)
+df_result.to_csv('evaluation/csv_files/jsrt/heatmap_regression.csv', index=False)
 
 
 # make multi-index
