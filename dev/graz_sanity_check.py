@@ -10,14 +10,18 @@ storage = graz_img_seg_lms_storage[key]
 
 kpt_idx = 0
 for i, bone in enumerate(graz_img_seg_lms_storage.attrs['BONE_LABEL']):
-    plt.figure(bone)
-    plt.title(bone)
-    plt.imshow(storage['img'], cmap='gray')
-    plt.imshow(storage['seg'][i], alpha=storage['seg'][i].astype(float))
+    fig, axs = plt.subplots(1, 2)
+    fig.suptitle(bone)
+    axs[0].imshow(storage['img'], cmap='gray')
+    axs[0].imshow(storage['seg'][i], alpha=storage['seg'][i].astype(float))
 
     offset = graz_img_seg_lms_storage.attrs['NUM_LMS'][i]
     kpts = storage['lms'][kpt_idx:kpt_idx+offset]
     kpt_idx += offset
 
-    plt.scatter(kpts[:, 0], kpts[:, 1], cmap='tab20', c=range(offset))
+    axs[0].scatter(kpts[:, 0], kpts[:, 1], cmap='tab20', c=range(offset))
+
+    axs[1].imshow(storage['dist_map'][i])
+    axs[1].scatter(kpts[:, 0], kpts[:, 1], c='r')
+
 plt.show()

@@ -39,6 +39,7 @@ with torch.inference_mode():
         # TRE
         lm_hat = convert_list_of_uv_to_coordinates(uv_hat, uv_values, 'linear', k=5)
         lm_hat = torch.cat(lm_hat, dim=1).squeeze(0)
+
         tre = torch.linalg.vector_norm(lm - lm_hat, dim=1, ord=2)
         tre *= ds.PIXEL_RESOLUTION_MM
 
@@ -64,6 +65,21 @@ with torch.inference_mode():
                 , index=[0])], ignore_index=True)
 
         # break
+
+# cluster anatomy
+df['anatomy'] = df['anatomy'].replace({'Ossa metacarpalia I': 'Metacarpals',
+                                       'Ossa metacarpalia II': 'Metacarpals',
+                                       'Ossa metacarpalia III': 'Metacarpals',
+                                       'Ossa metacarpalia IV': 'Metacarpals',
+                                       'Ossa metacarpalia V': 'Metacarpals',
+                                       'Os capitatum': 'Carpals',
+                                       'Os hamatum': 'Carpals',
+                                       'Os lunatum': 'Carpals',
+                                       'Os pisiforme': 'Carpals',
+                                       'Os scaphoideum': 'Carpals',
+                                       'Os triquetrum': 'Carpals',
+                                       'Os trapezium': 'Carpals',
+                                       'Os trapezoideum': 'Carpals', })
 
 # calculate statistics
 df_mean = df.groupby(['anatomy', 'metric']).mean().reset_index()

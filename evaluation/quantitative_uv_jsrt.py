@@ -57,7 +57,7 @@ with torch.inference_mode():
                 , index=[0])], ignore_index=True)
 
         #break
-# rename anatomy
+# cluster anatomy
 df['anatomy'] = df['anatomy'].replace({'left_lung': 'lungs', 'right_lung': 'lungs',
                                        'heart': 'heart', 'left_clavicle': 'clavicles', 'right_clavicle': 'clavicles'})
 

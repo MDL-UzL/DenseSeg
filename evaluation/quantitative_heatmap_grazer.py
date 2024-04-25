@@ -54,6 +54,20 @@ with torch.inference_mode():
             df = pd.concat([df, pd.DataFrame(
                 {'anatomy': anatomy, 'metric': 'dice', 'value': dsc.item() * 100}, index=[0])], ignore_index=True)
 
+# cluster anatomy
+df['anatomy'] = df['anatomy'].replace({'Ossa metacarpalia I': 'Metacarpals',
+                                       'Ossa metacarpalia II': 'Metacarpals',
+                                       'Ossa metacarpalia III': 'Metacarpals',
+                                       'Ossa metacarpalia IV': 'Metacarpals',
+                                       'Ossa metacarpalia V': 'Metacarpals',
+                                       'Os capitatum': 'Carpals',
+                                       'Os hamatum': 'Carpals',
+                                       'Os lunatum': 'Carpals',
+                                       'Os pisiforme': 'Carpals',
+                                       'Os scaphoideum': 'Carpals',
+                                       'Os triquetrum': 'Carpals',
+                                       'Os trapezium': 'Carpals',
+                                       'Os trapezoideum': 'Carpals', })
 
 # calculate statistics
 df_mean = df.groupby(['anatomy', 'metric']).mean().reset_index()
@@ -70,7 +84,6 @@ df_result['Method'] = 'Heatmap Regression'
 
 # save to csv
 df_result.to_csv('evaluation/csv_files/grazer/heatmap_regression.csv', index=False)
-
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])

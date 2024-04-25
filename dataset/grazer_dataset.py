@@ -67,8 +67,9 @@ class GrazPedWriDataset(Dataset):
         seg = torch.from_numpy(ds['seg'][:]).float()
         lms = torch.from_numpy(ds['lms'][:])
         uv_map = self.uv_maps[file_name]
+        dist_map = torch.from_numpy(ds['dist_map'][:]).float()
 
-        return img, lms, torch.full_like(seg, torch.nan), seg, uv_map  # -1 placeholder for dist_map
+        return img, lms, dist_map, seg, uv_map
 
     def get_anatomical_structure_uv_values(self):
         return self.uv_values
