@@ -273,12 +273,25 @@ def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to b
         # create ground truth heatmap
         B, _, H, W = img.shape
         N = lm.shape[1]
-        grid = torch.stack(torch.meshgrid(torch.arange(H, device=device),
-                                          torch.arange(W, device=device), indexing='xy'), dim=-1)
+        grid = torch.stack(torch.meshgrid(torch.arange(W, device=device),
+                                          torch.arange(H, device=device), indexing='xy'), dim=-1)
         grid = grid.view(1, H * W, 2)
         gaussian = grid.unsqueeze(1) - lm.unsqueeze(2)  # (B, N, H*W, 2)
         gaussian = alpha * torch.exp(-torch.sum(gaussian.pow(2), dim=-1) / (2 * std_pixel ** 2))  # (B, N, H*W)
         heatmap = gaussian.view(B, N, H, W)
+
+        # from matplotlib import pyplot as plt
+        # plt.figure()
+        # plt.imshow(img[0, 0].cpu().numpy(), cmap='gray')
+        # plt.scatter(lm[0, :, 0].cpu().numpy(), lm[0, :, 1].cpu().numpy(), c='r')
+        # for i, txt in enumerate(range(lm.shape[1])):
+        #     plt.gca().annotate(txt, (lm[0, i, 0], lm[0, i, 1]))
+        #
+        # plt.figure()
+        # idx = 0
+        # plt.imshow(heatmap[0, idx].cpu().numpy())
+        # plt.scatter(lm[0, idx, 0].cpu().numpy(), lm[0, idx, 1].cpu().numpy(), c='r')
+        # plt.show()
 
         with torch.set_grad_enabled(model.training):  # forward
             heatmap_hat = model(img)

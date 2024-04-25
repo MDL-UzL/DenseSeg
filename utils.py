@@ -1,10 +1,10 @@
 import numpy as np
 import torch
-from scipy.interpolate import griddata
-from tqdm import tqdm
-from torch.nn import functional as F
 from kornia.geometry import warp_affine, invert_affine_transform
+from scipy.interpolate import griddata
+from torch.nn import functional as F
 from torchvision.transforms.functional import crop
+from tqdm import tqdm
 
 
 # https://github.com/clementinboittiaux/umeyama-python/blob/main/umeyama.py
@@ -354,6 +354,28 @@ def extract_kpts_from_heatmap(heatmap:torch.Tensor) -> torch.Tensor:
     kpts = torch.stack([kpts // W, kpts % W], dim=-1)
     kpts = kpts.flip(-1)
     return kpts
+
+def farthest_point_sampling(kpts:torch.Tensor, num_points:int):
+    """
+    Farthest point sampling to select a subset of points from the given keypoints.
+    :param kpts: Keypoints of shape (1, N, 2)
+    :param num_points: number of points to select
+    :return: selected keypoints of shape (1, num_points, 2), indices of the selected points
+    """
+    _, N, _ = kpts.size()
+    ind = torch.zeros(num_points).long()
+    ind[0] = torch.randint(N, (1,))
+    dist = torch.sum((kpts - kpts[:, ind[0], :]) ** 2, dim=2)
+    for i in range(1, num_points):
+        ind[i] = torch.argmax(dist)
+        dist = torch.min(dist, torch.sum((kpts - kpts[:, ind[i], :]) ** 2, dim=2))
+
+    while N < num_points:
+        add_points = min(N, num_points - N)
+        ind = torch.cat([ind[:N], ind[:add_points]])
+        N += add_points
+
+    return kpts[:, ind, :], ind
 
 
 

@@ -40,7 +40,7 @@ device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu
 
 # define data loaders
 if dataset_to_use == 'GRAZ':
-    ds = lambda split: GrazPedWriDataset(split)
+    ds = lambda split: GrazPedWriDataset(split, 0.25)
 elif dataset_to_use == 'JSRT':
     ds = lambda split: JSRTDataset(split, False)
 else:
@@ -52,6 +52,7 @@ val_dl = DataLoader(ds('test'), batch_size=hp.infer_batch_size, shuffle=False, d
 
 # define model
 n_kpts = sum(train_dl.dataset.NUM_LANDMARKS.values())
+print(f'Number of keypoints: {n_kpts}')
 model = KeypointUNet(n_kpts)
 model.to(device)
 

@@ -49,7 +49,7 @@ device = torch.device(f'cuda:{hp.gpu_id}' if torch.cuda.is_available() else 'cpu
 
 # define data loaders
 if dataset_to_use == 'GRAZ':
-    ds = lambda split: GrazPedWriDataset(split)
+    ds = lambda split: GrazPedWriDataset(split, 0.25)
 elif dataset_to_use == 'JSRT':
     ds = lambda split: JSRTDatasetUV(split, hp.uv_method)
 else:

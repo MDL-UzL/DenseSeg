@@ -11,11 +11,15 @@ from dataset.grazer_dataset import GrazPedWriDataset
 from models.kpts_unet import KeypointUNet
 from utils import extract_kpts_from_heatmap
 
+model_name = 'heatmap'
+print(f'Evaluating {model_name}')
+
 ds = GrazPedWriDataset('test')
-cl_model = InputModel(grazer_model_ids['heatmap'])
+cl_model = InputModel(grazer_model_ids[model_name])
 model = KeypointUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
+
 
 with torch.inference_mode():
     for img, lm, dist_map, seg, _ in tqdm(ds, desc='Evaluating', unit='img'):
@@ -54,6 +58,13 @@ with torch.inference_mode():
             df = pd.concat([df, pd.DataFrame(
                 {'anatomy': anatomy, 'metric': 'dice', 'value': dsc.item() * 100}, index=[0])], ignore_index=True)
 
+            # from matplotlib import pyplot as plt
+            #
+            # plt.imshow(img.squeeze().numpy(), cmap='gray')
+            # plt.imshow(seg_hat, alpha=seg_hat.float())
+            # plt.scatter(lm[start_idx:end_idx, 0], lm[start_idx:end_idx, 1], c='r')
+            # plt.show()
+
 # cluster anatomy
 df['anatomy'] = df['anatomy'].replace({'Ossa metacarpalia I': 'Metacarpals',
                                        'Ossa metacarpalia II': 'Metacarpals',
@@ -83,9 +94,11 @@ df_result = pd.concat([df_result, df_avg], ignore_index=True)
 df_result['Method'] = 'Heatmap Regression'
 
 # save to csv
-df_result.to_csv('evaluation/csv_files/grazer/heatmap_regression.csv', index=False)
+# df_result.to_csv('evaluation/csv_files/grazer/heatmap_regression.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])
 
 print(df_result)
+
+

@@ -13,8 +13,11 @@ from clearml_ids import grazer_model_ids
 
 device = 'cuda:4' if torch.cuda.is_available() else 'cpu'
 
-ds = GrazPedWriDataset('test')
-cl_model = InputModel(grazer_model_ids['uv'])
+model_name = 'uv_0.25'
+print(f'Evaluating {model_name}')
+
+ds = GrazPedWriDataset('test', float(model_name.split('_')[-1]))
+cl_model = InputModel(grazer_model_ids[model_name])
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval().to(device)
 
 dsc_metric = DiceMetric(include_background=True, reduction='none', num_classes=ds.N_CLASSES)
@@ -94,7 +97,7 @@ df_result = pd.concat([df_result, df_avg], ignore_index=True)
 df_result['Method'] = 'uv'
 
 # save to csv
-df_result.to_csv(f'evaluation/csv_files/grazer/uv.csv', index=False)
+# df_result.to_csv(f'evaluation/csv_files/grazer/uv.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])

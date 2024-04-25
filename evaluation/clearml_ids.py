@@ -8,5 +8,7 @@ jsrt_model_ids = {
 
 grazer_model_ids = {
     'uv': 'f9030bcd160143fcae747e06a1071b92',
-    'heatmap': '03cbf94fc2d84e7ba002972228183055'
+    'uv_0.25': '72ab447fd81b47e1af61d85d0aa48190',
+    'heatmap': 'ba1fbb9d70af413fb2a44f056b709a71',
+    'heatmap_0.25': '8b2108650e374cddb604e77c22cd4c44'
 }
