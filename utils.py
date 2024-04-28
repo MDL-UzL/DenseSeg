@@ -377,6 +377,16 @@ def farthest_point_sampling(kpts:torch.Tensor, num_points:int):
 
     return kpts[:, ind, :], ind
 
+def sort_kpts_clockwise(kpts:torch.Tensor):
+    """
+    Sort the keypoints in clockwise order.
+    :param kpts: Keypoints of shape (N, 2)
+    :return: sorted keypoints of shape (N, 2)
+    """
+    center = kpts.mean(0)
+    angles = torch.atan2(kpts[:, 1] - center[1], kpts[:, 0] - center[0]) + 2 * torch.pi
+    _, indices = torch.sort(angles)
+    return kpts[indices]
 
 
 if __name__ == '__main__':

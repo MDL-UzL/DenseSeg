@@ -11,17 +11,17 @@ from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
 from clearml_ids import jsrt_model_ids
 
-uv_method = 'cartesian_sparse'
+uv_method = 'cartesian'
 print(f'Evaluating model with uv method {uv_method}')
 ds = JSRTDatasetUV('test', uv_method.split('_')[0])
 cl_model = InputModel(jsrt_model_ids[uv_method])
 model = UVUNet.load(cl_model.get_weights(), 'cpu').eval()
 
 dsc_metric = DiceMetric(include_background=True, reduction='none', num_classes=ds.N_CLASSES)
-df = pd.DataFrame(columns=['anatomy', 'metric', 'value'])
+df = pd.DataFrame(columns=['file', 'anatomy', 'metric', 'value'])
 
 with torch.inference_mode():
-    for img, lm, dist_map, seg_mask, uv_map in tqdm(ds, desc='Evaluating', unit='img'):
+    for i, (img, lm, dist_map, seg_mask, uv_map) in enumerate(tqdm(ds, desc='Evaluating', unit='img')):
         seg_hat, uv_hat = model.predict(img.unsqueeze(0), mask_uv=True)
         # seg_hat, uv_hat = seg_mask.unsqueeze(0), uv_map.unsqueeze(0)
 
@@ -44,15 +44,15 @@ with torch.inference_mode():
 
         for anat_idx, (anatomy, (start_idx, end_idx)) in enumerate(ds.get_anatomical_structure_index().items()):
             df = pd.concat([df, pd.DataFrame(
-                {'anatomy': anatomy, 'metric': 'dice', 'value': dsc_value[anat_idx].item() * 100}
+                {'file': i, 'anatomy': anatomy, 'metric': 'dice', 'value': dsc_value[anat_idx].item() * 100}
                 , index=[0])], ignore_index=True)
 
             df = pd.concat([df, pd.DataFrame(
-                {'anatomy': anatomy, 'metric': 'tre', 'value': tre[start_idx:end_idx].mean().item()}
+                {'file': i, 'anatomy': anatomy, 'metric': 'tre', 'value': tre[start_idx:end_idx].mean().item()}
                 , index=[0])], ignore_index=True)
 
             df = pd.concat([df, pd.DataFrame(
-                {'anatomy': anatomy, 'metric': 'avg_surf_dist',
+                {'file': i, 'anatomy': anatomy, 'metric': 'avg_surf_dist',
                  'value': avg_surf_dist[anat_idx, start_idx:end_idx].mean().item()}
                 , index=[0])], ignore_index=True)
 
@@ -61,7 +61,25 @@ with torch.inference_mode():
 df['anatomy'] = df['anatomy'].replace({'left_lung': 'lungs', 'right_lung': 'lungs',
                                        'heart': 'heart', 'left_clavicle': 'clavicles', 'right_clavicle': 'clavicles'})
 
+# filter to ASD
+df_files = df.loc[df['metric'] == 'avg_surf_dist']
+df_files = df_files.drop(['anatomy', 'metric'], axis=1)
+# find best, median, worst file
+df_files = df_files.groupby('file').mean().reset_index()
+df_files = df_files.sort_values('value', ascending=True)
+best_file = df_files.iloc[0]['file']
+median_file = df_files.iloc[len(df_files) // 2]['file']
+worst_file = df_files.iloc[-1]['file']
+
+print(f'Best file: {best_file} with ASD {df_files.iloc[0]["value"]}')
+print(f'Median file: {median_file} with ASD {df_files.iloc[len(df_files) // 2]["value"]}')
+print(f'Worst file: {worst_file} with ASD {df_files.iloc[-1]["value"]}')
+
+del df_files
+
+
 # calculate statistics
+df = df.drop('file', axis=1)
 df_mean = df.groupby(['anatomy', 'metric']).mean().reset_index()
 df_std = df.groupby(['anatomy', 'metric']).std().reset_index()
 df_result = df_mean.merge(df_std, on=['anatomy', 'metric'], suffixes=('_mean', '_std'))

@@ -11,7 +11,7 @@ from dataset.grazer_dataset import GrazPedWriDataset
 from models.kpts_unet import KeypointUNet
 from utils import extract_kpts_from_heatmap
 
-model_name = 'heatmap'
+model_name = 'heatmap_0.25'
 print(f'Evaluating {model_name}')
 
 ds = GrazPedWriDataset('test')
@@ -49,7 +49,14 @@ with torch.inference_mode():
                 , index=[0])], ignore_index=True)
 
             # DICE
-            seg_hat = polygon2mask((H, W), lm_hat[start_idx:end_idx].flip(-1))
+            # sort clockwise
+            curr_lm = lm_hat[start_idx:end_idx].float()
+            lowest = curr_lm.mean(0)
+            angels = torch.atan2(curr_lm[:, 1] - lowest[1], curr_lm[:, 0] - lowest[0]) + 2 * torch.pi
+            _, indices = torch.sort(angels)
+            curr_lm = curr_lm[indices]
+
+            seg_hat = polygon2mask((H, W), curr_lm.flip(-1))
             seg_hat = torch.from_numpy(seg_hat)
             intersection = (seg_hat & seg[anat_idx].bool()).sum()
             set_power = seg_hat.sum() + seg[anat_idx].sum()
@@ -78,7 +85,12 @@ df['anatomy'] = df['anatomy'].replace({'Ossa metacarpalia I': 'Metacarpals',
                                        'Os scaphoideum': 'Carpals',
                                        'Os triquetrum': 'Carpals',
                                        'Os trapezium': 'Carpals',
-                                       'Os trapezoideum': 'Carpals', })
+                                       'Os trapezoideum': 'Carpals',
+                                       'Ulna': 'Ulna/Radius',
+                                       'Radius': 'Ulna/Radius',
+                                       'Epiphyse Ulna': 'Ulna/Radius',
+                                       'Epiphyse Radius': 'Ulna/Radius',
+                                       })
 
 # calculate statistics
 df_mean = df.groupby(['anatomy', 'metric']).mean().reset_index()
@@ -94,7 +106,7 @@ df_result = pd.concat([df_result, df_avg], ignore_index=True)
 df_result['Method'] = 'Heatmap Regression'
 
 # save to csv
-# df_result.to_csv('evaluation/csv_files/grazer/heatmap_regression.csv', index=False)
+df_result.to_csv('evaluation/csv_files/grazer/heatmap_regression.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])
