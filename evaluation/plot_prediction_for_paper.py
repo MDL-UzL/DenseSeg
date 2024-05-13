@@ -14,8 +14,8 @@ from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates, sort_kpts_clockwise, extract_kpts_from_heatmap
 
 example = ['best', 'median', 'worst'][2]
-model_name = ['uv', 'heatmap', 'shapeformer'][0]
-ds_2_use = ['jsrt', 'grazer'][1]
+model_name = ['uv', 'heatmap', 'shapeformer'][2]
+ds_2_use = ['jsrt', 'grazer'][0]
 print(f'Example: {example}, Model: {model_name}, Dataset: {ds_2_use}')
 
 if ds_2_use == 'grazer':
@@ -102,6 +102,6 @@ print('TRE:', round(tre_avg.mean().item(), 1), '±', round(tre_avg.std().item(),
 print('ASD:', round(asd_avg.mean().item(), 1), '±', round(asd_avg.std().item(), 1))
 
 plt.axis('off')
-plt.savefig(f'/home/ron/Desktop/plotting/{ds_2_use}_{model_name}_{example}.png',
-            dpi=800, bbox_inches='tight', pad_inches=0)
+plt.savefig(f'/home/ron/Documents/Konferenzen/IJCARS/results/{ds_2_use}_{model_name}_{example}.png',
+            dpi=300, bbox_inches='tight', pad_inches=0)
 plt.show()

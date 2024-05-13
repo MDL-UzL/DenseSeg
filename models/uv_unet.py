@@ -81,8 +81,10 @@ class UVUNet(LoadableModel):
 if __name__ == '__main__':
     from torchinfo import summary
     import torch
+    from evaluation.clearml_ids import grazer_model_ids
+    from clearml import InputModel
 
-    model = UVUNet(n_classes=5)
+    model = UVUNet.load(InputModel(grazer_model_ids['uv']).get_weights(), 'cpu')
     print(model)
     summary(model, (1, 1, 256, 256))
     seg, uv = model(torch.randn(1, 1, 256, 256))

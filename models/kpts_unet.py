@@ -36,7 +36,9 @@ class KeypointUNet(LoadableModel):
 
 if __name__ == '__main__':
     from torchinfo import summary
+    from evaluation.clearml_ids import grazer_model_ids
+    from clearml import InputModel
 
-    model = KeypointUNet(n_kpts=160)
+    model = KeypointUNet.load(InputModel(grazer_model_ids['heatmap']).get_weights(), 'cpu')
     print(model)
     summary(model, (1, 1, 256, 256))
