@@ -8,6 +8,7 @@ from utils import extract_warped_uv_maps, extract_polar_uv_maps
 
 generation_mode = 'polar'
 print(f'Generating {generation_mode} uv maps...')
+assert generation_mode == 'polar', 'Only polar mode is supported for Graz dataset'
 extract_fn = {'cartesian': extract_warped_uv_maps, 'polar': extract_polar_uv_maps}[generation_mode]
 
 storage = h5py.File('/home/ron/Documents/DenseSeg/dataset/data/graz/graz_img_seg_lms.h5', 'r')

@@ -6,9 +6,9 @@ import cv2
 from scipy.ndimage import distance_transform_edt
 import numpy as np
 
-seg_path = Path('/home/ron/Documents/DenseSeg/dataset/data/graz/raw_segmentations_no_cast.h5')
-lms_path = Path('/home/ron/Documents/DenseSeg/dataset/data/graz/lms_dsc_900.pth')
-img_path = Path('/home/ron/Documents/SemiSAM/data/img_only_front_all_left')
+seg_path = Path('dataset/data/graz/raw_segmentations_no_cast.h5')
+lms_path = Path('dataset/data/graz/lms_dsc_900.pth')
+img_path = Path('dataset/data/graz/img_only_front_all_left')
 
 lms_dict = torch.load(lms_path, map_location='cpu')
 available_files = set(lms_dict['keys'])
