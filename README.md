@@ -7,7 +7,9 @@ conda env create -f environment.yml
 ```
 
 ## Data
-All the data should be in the 'dataset/data' folder.
+All the data should be in the `dataset/data` folder.
+Please download the part (like segmentation, landmarks or data splits) of the dataset we provide [here](https://cloud.imi.uni-luebeck.de/s/ASSPxXoDtNCDLSX).
+
 ### JSRT Datset
 Please refer to ngaggion's [repository](https://github.com/ngaggion/Chest-xray-landmark-dataset/blob/main/Preprocess-JSRT.ipynb) to download and preprocess the JSRT dataset as well for his provided landmarks.
 We further reduce the resolution to 256x256 pixel and organize the images and landmarks as two pytorch tensors in a python dictionary `JSRT_img0_lms.pth`.
@@ -24,7 +26,6 @@ The landmarks were created by training an unbiased point cloud registration netw
 4850 surface points extracted from each segmentation contours using a two-step Seg-
 ResNet with the DiVRoC loss. We select one scan as reference and uniformly
 subsample points on each of the 17 bones - in total 720. We filter out images with a segmentation alignment to the reference below a defined Dice threshold providing the landmarks for three different Dice thresholds (0.8, 0.875, 0.9): `dataset/data/graz/lms_dsc_X.pth`.
-
 
 ## UV maps
 Please use the provided scripts `dataset/jsrt_create_uv_maps.py` and `dataset/graz_create_uv_maps.py` to create the UV maps for the JSRT and GrazPedWri datasets. The UV maps are stored in the 'dataset/data' folder.
