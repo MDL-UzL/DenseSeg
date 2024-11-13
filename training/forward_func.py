@@ -9,7 +9,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from models.uv_unet import UVUNet
-from models.kpts_unet import KeypointUNet
+from models.kpts_unet import KeypointUNet, KeypointSegUNet
 from utils import convert_list_of_uv_to_coordinates, extract_kpts_from_heatmap
 from kornia.augmentation import AugmentationSequential
 from kornia.geometry.conversions import normalize_pixel_coordinates
@@ -314,8 +314,81 @@ def forward_heatmap(mode: str, data_loader: DataLoader, epoch: int,  # have to b
 
     # log metrics scalars
     log = Logger.current_logger()
-    loss_avg = loss_collector.aggregate()  # [loss, bce, uv, reg, lm]
+    loss_avg = loss_collector.aggregate()  # [loss, tre]
     log.report_scalar('Loss', mode, iteration=epoch, value=loss_avg[0].item())
     log.report_scalar('TRE [mm]', mode, iteration=epoch, value=loss_avg[1].item())
     log.report_histogram('TRE [mm]', mode, iteration=epoch, values=tre_collector.aggregate(),
                          xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='TRE [mm]')
+
+def forward_heatmap_and_seg(mode: str, data_loader: DataLoader, epoch: int,  # have to be given each call
+                    # can be provided via kwargs dict
+                    model: KeypointSegUNet, optimizer: Optimizer, device: torch.device, std_pixel: int, alpha: int, lambda_loss: float,
+                    bce_pos_weight: torch.Tensor, data_aug: AugmentationSequential = None) -> (torch.Tensor, torch.Tensor):
+    # set model mode according to mode
+    if mode == 'train':
+        model.train()
+    elif mode in ['test', 'val']:
+        model.eval()
+    else:
+        raise ValueError(f'Unknown mode: {mode}')
+
+    loss_collector = metrics.CumulativeAverage()
+    tre_collector = metrics.CumulativeAverage()
+    dsc = metrics.DiceMetric(reduction='mean_batch', include_background=True, ignore_empty=True,
+                             num_classes=data_loader.dataset.N_CLASSES)
+
+    for batch in data_loader:
+        img, lm, _, seg = batch[:4]
+        img = img.to(device, non_blocking=True)
+        seg = seg.to(device, non_blocking=True)
+        lm = lm.to(device, non_blocking=True)  # (B, N, 2)
+
+        if data_aug and model.training:
+            img, seg, lm = data_aug(img, seg, lm)
+
+        # create ground truth heatmap
+        B, _, H, W = img.shape
+        N = lm.shape[1]
+        grid = torch.stack(torch.meshgrid(torch.arange(W, device=device),
+                                          torch.arange(H, device=device), indexing='xy'), dim=-1)
+        grid = grid.view(1, H * W, 2)
+        gaussian = grid.unsqueeze(1) - lm.unsqueeze(2)  # (B, N, H*W, 2)
+        gaussian = alpha * torch.exp(-torch.sum(gaussian.pow(2), dim=-1) / (2 * std_pixel ** 2))  # (B, N, H*W)
+        heatmap = gaussian.view(B, N, H, W)
+
+        with torch.set_grad_enabled(model.training):  # forward
+            seg_hat, heatmap_hat = model(img)
+            seg_loss = F.binary_cross_entropy_with_logits(seg_hat, seg, pos_weight=bce_pos_weight)
+            heatmap_loss = F.mse_loss(heatmap_hat, heatmap)
+            loss = lambda_loss * seg_loss + (1 - lambda_loss) * heatmap_loss
+
+        if model.training:  # backward
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+
+        # track metrics
+        lm_hat = extract_kpts_from_heatmap(heatmap_hat.detach())
+        tre = torch.linalg.vector_norm(lm - lm_hat, ord=2, dim=-1) * JSRTDataset.PIXEL_RESOLUTION_MM
+        tre_organ = []
+        dsc(seg_hat.sigmoid() > 0.5, seg)
+        for (start_idx, end_idx) in data_loader.dataset.get_anatomical_structure_index().values():
+            tre_organ.append(tre[:, start_idx:end_idx].mean())
+
+        tre_collector.append(tre_organ, count=B)
+        loss_collector.append([loss, tre.mean(), seg_loss, heatmap_loss], count=B)
+
+    # log metrics scalars
+    log = Logger.current_logger()
+    loss_avg = loss_collector.aggregate()  # [loss, tre, seg_loss, heatmap_loss]
+    log.report_scalar('Loss', mode, iteration=epoch, value=loss_avg[0].item())
+    log.report_scalar('BCE', mode, iteration=epoch, value=loss_avg[2].item())
+    log.report_scalar('Heatmap MSE', mode, iteration=epoch, value=loss_avg[3].item())
+    log.report_scalar('TRE [mm]', mode, iteration=epoch, value=loss_avg[1].item())
+    log.report_histogram('TRE [mm]', mode, iteration=epoch, values=tre_collector.aggregate(),
+                         xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='TRE [mm]')
+    log.report_scalar('Dice', mode, iteration=epoch, value=dsc.aggregate().mean().item())
+    log.report_histogram('Dice', mode, iteration=epoch,
+                         values=dsc.aggregate().cpu().numpy(),
+                         xlabels=data_loader.dataset.CLASS_LABEL, xaxis='class', yaxis='dice')
+
