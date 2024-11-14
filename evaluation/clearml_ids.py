@@ -5,6 +5,7 @@ jsrt_model_ids = {
     'heatmap': 'e920c585799a4ad9b4d3ff9f02e078af',
     'cartesian_sparse': 'fe2d3124bccb49249c52ffb66ab24541',
     'shapeformer': None,  # Not available
+    'heatmap_seg': 'ad46a21b959b48cfa94c16a3d310ea76'
 }
 
 grazer_model_ids = {

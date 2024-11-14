@@ -13,12 +13,12 @@ from training.forward_func import forward_heatmap_and_seg
 from training.hyper_params import hp_parser
 from kornia.augmentation import AugmentationSequential, RandomAffine
 
-dataset_to_use = ['GRAZ', 'JSRT'][1]
+dataset_to_use = ['GRAZ', 'JSRT'][0]
 
 hp_parser.add_argument('--std', type=int, default=8,
                        help='standard deviation of gaussian function in pixel for heatmap generation')
 hp_parser.add_argument('--alpha', type=int, default=44, help='alpha to boost gaussian function for heatmap generation')
-hp_parser.add_argument('--lambda_loss', type=float, default=0.5, help='balance between heatmap and segmentation loss')
+hp_parser.add_argument('--lambda_loss', type=float, default=0.38, help='balance between heatmap and segmentation loss')
 hp = hp_parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"

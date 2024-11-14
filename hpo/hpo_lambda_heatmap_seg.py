@@ -27,7 +27,7 @@ controller = HyperParameterOptimizer(
     }),
     time_limit_per_job=12,
     max_iteration_per_job=100,
-    total_max_jobs=150,
+    total_max_jobs=80,
     pool_period_min=1,
 )
 
