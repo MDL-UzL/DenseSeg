@@ -11,7 +11,7 @@ from models.uv_unet import UVUNet
 from utils import convert_list_of_uv_to_coordinates
 from clearml_ids import jsrt_model_ids
 
-uv_method = 'cartesian'
+uv_method = 'cartesian_sparse'
 print(f'Evaluating model with uv method {uv_method}')
 ds = JSRTDatasetUV('test', uv_method.split('_')[0])
 cl_model = InputModel(jsrt_model_ids[uv_method])
@@ -92,7 +92,7 @@ df_result = pd.concat([df_result, df_avg], ignore_index=True)
 df_result['Method'] = uv_method
 
 # save to csv
-df_result.to_csv(f'evaluation/csv_files/jsrt/uv_{uv_method}.csv', index=False)
+# df_result.to_csv(f'evaluation/csv_files/jsrt/uv_{uv_method}.csv', index=False)
 
 # make multi-index
 df_result = df_result.set_index(['anatomy', 'metric'])
