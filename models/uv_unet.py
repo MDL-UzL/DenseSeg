@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     model = UVUNet.load(InputModel(grazer_model_ids['uv']).get_weights(), 'cpu')
     print(model)
-    summary(model, (1, 1, 256, 256))
+    summary(model, (1, 1, 384, 224))
     seg, uv = model(torch.randn(1, 1, 256, 256))
     print(seg.shape, uv.shape)
     seg_hat, uv_hat = model.predict(torch.randn(1, 1, 256, 256))

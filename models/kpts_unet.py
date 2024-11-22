@@ -81,9 +81,9 @@ if __name__ == '__main__':
     from evaluation.clearml_ids import grazer_model_ids
     from clearml import InputModel
 
-    #model = KeypointUNet.load(InputModel(grazer_model_ids['heatmap']).get_weights(), 'cpu')
-    model = KeypointSegUNet(166, 4)
+    model = KeypointUNet.load(InputModel(grazer_model_ids['heatmap_1']).get_weights(), 'cpu')
+    #model = KeypointSegUNet(166, 4)
     print(model)
-    seg_hat, kpts_hat = model(torch.randn(1, 1, 256, 256))
-    print(seg_hat.shape, kpts_hat.shape)
-    summary(model, (1, 1, 256, 256))
+    # seg_hat, kpts_hat = model(torch.randn(1, 1, 384, 224))
+    # print(seg_hat.shape, kpts_hat.shape)
+    summary(model, (1, 1, 384, 224))
